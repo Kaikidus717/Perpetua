@@ -1,0 +1,34 @@
+{
+  "name": "@perpetua/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
+    "test": "vitest run",
+    "ops:create-vault": "tsx scripts/create-vault.ts",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "0.32.1",
+    "@perpetua/shared": "workspace:*",
+    "@solana/spl-token": "0.4.9",
+    "@solana/web3.js": "1.99.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "rimraf": "6.0.1",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

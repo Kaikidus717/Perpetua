@@ -1,0 +1,34 @@
+{
+  "name": "@perpetua/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.3",
+    "@perpetua/sdk": "workspace:*",
+    "@perpetua/shared": "workspace:*",
+    "@perpetua/valuation": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "hono": "4.13.12",
+    "postgres": "3.4.9",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "drizzle-kit": "0.31.11",
+    "rimraf": "6.0.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm test
+
+  program:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: programs/perpetua_vault
+      - name: Unit tests
+        working-directory: programs/perpetua_vault
+        run: cargo test --features no-entrypoint
+      - name: Install Anchor
+        run: cargo install --git https://github.com/coral-xyz/anchor avm --locked --force && avm install 0.32.1 && avm use 0.32.1
+      - name: Anchor build
+        run: anchor build
+      - name: Verifiable build
+        run: |
+          cargo install solana-verify --locked
+          solana-verify build --library-name perpetua_vault

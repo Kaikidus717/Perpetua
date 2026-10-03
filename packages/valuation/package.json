@@ -1,0 +1,31 @@
+{
+  "name": "@perpetua/valuation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "backtest": "tsx backtest/run.ts",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@perpetua/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "6.0.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

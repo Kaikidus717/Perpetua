@@ -1,4 +1,4 @@
-import { StaticDataApi } from "@perpetua/sdk";
+import { StaticDataApi } from "@perpetua/sdk/data";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { DEMO_POOL, DEMO_WALLET, demoPools, demoPositions } from "../src/demo.js";

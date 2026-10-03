@@ -1,4 +1,4 @@
-import type { DataApiPort } from "@perpetua/sdk";
+import type { DataApiPort } from "@perpetua/sdk/ports";
 import type { PoolDailySeries, PositionSummary } from "@perpetua/shared";
 
 export interface PoolDailyResponse {

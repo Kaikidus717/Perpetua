@@ -21,7 +21,7 @@ cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "cargo test --features no-entrypoint"
+test = "cargo test -p perpetua_vault --features no-entrypoint"
 
 [test]
 startup_wait = 5000

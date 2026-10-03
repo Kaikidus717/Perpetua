@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",
-    "@perpetua/api": "workspace:*",
     "@perpetua/sdk": "workspace:*",
     "@perpetua/shared": "workspace:*",
     "@solana/spl-token": "0.4.9",

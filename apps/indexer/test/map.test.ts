@@ -1,6 +1,6 @@
-import { BN } from "@coral-xyz/anchor";
 import type { VaultAccountData } from "@perpetua/sdk";
 import { Keypair } from "@solana/web3.js";
+import BN from "bn.js";
 import { describe, expect, it } from "vitest";
 import { toVaultSummary } from "../src/map.js";
 

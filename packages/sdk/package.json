@@ -9,6 +9,30 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./ports": {
+      "types": "./dist/ports.d.ts",
+      "default": "./dist/ports.js"
+    },
+    "./data": {
+      "types": "./dist/data/staticDataApi.d.ts",
+      "default": "./dist/data/staticDataApi.js"
+    },
+    "./sale": {
+      "types": "./dist/sale/ladder.d.ts",
+      "default": "./dist/sale/ladder.js"
+    },
+    "./dbc": {
+      "types": "./dist/dbc/preset.d.ts",
+      "default": "./dist/dbc/preset.js"
+    },
+    "./math": {
+      "types": "./dist/math/feePerShare.d.ts",
+      "default": "./dist/math/feePerShare.js"
+    },
+    "./positions": {
+      "types": "./dist/positions/eligibility.d.ts",
+      "default": "./dist/positions/eligibility.js"
     }
   },
   "files": ["dist"],
@@ -23,9 +47,11 @@
     "@coral-xyz/anchor": "0.32.1",
     "@perpetua/shared": "workspace:*",
     "@solana/spl-token": "0.4.9",
-    "@solana/web3.js": "1.99.0"
+    "@solana/web3.js": "1.99.0",
+    "bn.js": "5.2.1"
   },
   "devDependencies": {
+    "@types/bn.js": "5.1.6",
     "@types/node": "22.10.2",
     "rimraf": "6.0.1",
     "typescript": "5.7.2",

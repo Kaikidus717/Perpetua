@@ -1,5 +1,6 @@
-import { type AnchorProvider, BN, type Idl, Program } from "@coral-xyz/anchor";
+import { type AnchorProvider, type Idl, Program } from "@coral-xyz/anchor";
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
+import BN from "bn.js";
 import { PERPETUA_VAULT_IDL } from "../idl/perpetua_vault.js";
 import type {
   ClaimAccounts,

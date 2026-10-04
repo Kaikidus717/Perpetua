@@ -12,6 +12,7 @@
   "dependencies": {
     "@perpetua/shared": "workspace:*",
     "@perpetua/valuation": "workspace:*",
+    "@solana/web3.js": "1.99.0",
     "@tanstack/react-query": "5.104.1",
     "lightweight-charts": "5.2.1",
     "next": "16.3.8",

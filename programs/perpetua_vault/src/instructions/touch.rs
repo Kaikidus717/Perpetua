@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{self, TokenAccount, TransferChecked};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TransferChecked};
 
 use crate::constants::VAULT_SEED;
-use crate::cpi;
+use crate::cpi::{self, ClaimCpiAccounts};
 use crate::errors::PerpetuaError;
 use crate::math;
 use crate::state::{Config, Stake, Vault};
@@ -31,11 +31,15 @@ pub fn settle<'info>(stake: &mut Account<'info, Stake>, vault: &Account<'info, V
 }
 
 pub struct ClaimAccounts<'info> {
+    pub pool_authority: AccountInfo<'info>,
     pub pool: AccountInfo<'info>,
     pub position: AccountInfo<'info>,
     pub position_nft_account: AccountInfo<'info>,
-    pub token_a_mint: AccountInfo<'info>,
-    pub token_b_mint: AccountInfo<'info>,
+    pub token_a_mint: InterfaceAccount<'info, Mint>,
+    pub token_b_mint: InterfaceAccount<'info, Mint>,
+    pub token_a_vault: AccountInfo<'info>,
+    pub token_b_vault: AccountInfo<'info>,
+    pub event_authority: AccountInfo<'info>,
     pub vault_a_account: InterfaceAccount<'info, TokenAccount>,
     pub vault_b_account: InterfaceAccount<'info, TokenAccount>,
     pub treasury_a_account: InterfaceAccount<'info, TokenAccount>,
@@ -47,11 +51,11 @@ pub struct ClaimAccounts<'info> {
 
 impl<'info> ClaimAccounts<'info> {
     fn token_a_mint_info(&self) -> AccountInfo<'info> {
-        self.token_a_mint.clone()
+        self.token_a_mint.to_account_info()
     }
 
     fn token_b_mint_info(&self) -> AccountInfo<'info> {
-        self.token_b_mint.clone()
+        self.token_b_mint.to_account_info()
     }
 }
 
@@ -70,20 +74,25 @@ pub fn touch<'info>(
     let bump = vault.bump;
     let signer_seeds: &[&[&[u8]]] = &[&[VAULT_SEED, position_key.as_ref(), &[bump]]];
 
-    let cpi_accounts = vec![
-        accounts.pool.clone(),
-        accounts.position.clone(),
-        accounts.position_nft_account.clone(),
-        accounts.token_a_mint_info(),
-        accounts.token_b_mint_info(),
-        accounts.vault_a_account.to_account_info(),
-        accounts.vault_b_account.to_account_info(),
-        accounts.token_a_program.clone(),
-        accounts.token_b_program.clone(),
-        vault.to_account_info(),
-    ];
+    let cpi_accounts = ClaimCpiAccounts {
+        pool_authority: accounts.pool_authority.clone(),
+        pool: accounts.pool.clone(),
+        position: accounts.position.clone(),
+        token_a_account: accounts.vault_a_account.to_account_info(),
+        token_b_account: accounts.vault_b_account.to_account_info(),
+        token_a_vault: accounts.token_a_vault.clone(),
+        token_b_vault: accounts.token_b_vault.clone(),
+        token_a_mint: accounts.token_a_mint_info(),
+        token_b_mint: accounts.token_b_mint_info(),
+        position_nft_account: accounts.position_nft_account.clone(),
+        signer: vault.to_account_info(),
+        token_a_program: accounts.token_a_program.clone(),
+        token_b_program: accounts.token_b_program.clone(),
+        event_authority: accounts.event_authority.clone(),
+        program: accounts.cp_amm_program.clone(),
+    };
 
-    cpi::claim_position_fee(&accounts.cp_amm_program, &cpi_accounts, signer_seeds)?;
+    cpi::claim_position_fee(cpi_accounts, signer_seeds)?;
 
     accounts.vault_a_account.reload()?;
     accounts.vault_b_account.reload()?;
@@ -118,7 +127,7 @@ fn skim<'info>(
                 },
             ),
             fee_a,
-            accounts.vault_a_account.decimals,
+            accounts.token_a_mint.decimals,
         )?;
         accounts.vault_a_account.reload()?;
     }
@@ -134,7 +143,7 @@ fn skim<'info>(
                 },
             ),
             fee_b,
-            accounts.vault_b_account.decimals,
+            accounts.token_b_mint.decimals,
         )?;
         accounts.vault_b_account.reload()?;
     }

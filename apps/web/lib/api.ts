@@ -34,6 +34,23 @@ export interface LadderView {
   weightedAveragePriceUsd: number;
 }
 
+export interface OnchainPosition {
+  address: string;
+  pool: string;
+  nftMint: string;
+  nftAccount: string;
+  positionNftProgram: string;
+  tokenAMint: string;
+  tokenBMint: string;
+  tokenAProgram: string;
+  tokenBProgram: string;
+  unlockedLiquidity: string;
+  vestedLiquidity: string;
+  permanentLockedLiquidity: string;
+  feeAPending: string;
+  feeBPending: string;
+}
+
 export interface ValuationParams {
   liquidityShare?: number;
   protocolFeeBps?: number;
@@ -80,4 +97,6 @@ export const api = {
     get<{ plan: LadderView }>(`/v1/sale/plan${query({ fairValuePerShareUsd, totalShares })}`),
   stats: () => get<{ stats: StatsSummary }>("/v1/stats"),
   positions: (wallet: string) => get<{ positions: PositionSummary[] }>(`/v1/positions/${wallet}`),
+  positionsOnchain: (wallet: string) =>
+    get<{ positions: OnchainPosition[] }>(`/v1/positions/${wallet}/onchain`),
 };

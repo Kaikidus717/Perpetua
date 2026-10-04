@@ -109,24 +109,36 @@ cargo test -p perpetua_vault --features no-entrypoint
 
 ## Status
 
+Everything below is verified by running it, not by inspection.
+
 | Component | State |
 |---|---|
+| `programs/perpetua_vault` | `cargo check` clean; `cargo test -p perpetua_vault` → **7/7 pass** (accrual, carry, protocol fee, conservation) |
+| Position-lock offsets | verified against **11 live on-chain DAMM v2 positions**, one of them permanently locked |
 | `@perpetua/shared`, `@perpetua/valuation`, `@perpetua/sdk` | built + unit tested |
-| `@perpetua/api`, `@perpetua/indexer`, `@perpetua/keeper` | built + unit tested |
-| `@perpetua/web` | built with `next build` |
-| `programs/perpetua_vault` | source complete; **compiles with the Solana/Anchor toolchain** (Rust is not installed in every dev box) |
-| LiteSVM integration tests | present, require fetched mainnet binaries |
+| `@perpetua/api`, `@perpetua/indexer`, `@perpetua/keeper` | built + unit tested; API serves every route at runtime |
+| `@perpetua/web` | `next build` green, 7 routes; the securitize and vault pages sign with a connected wallet |
+| Meteora SDKs | `@meteora-ag/cp-amm-sdk`, `@meteora-ag/dlmm`, `@meteora-ag/dynamic-bonding-curve-sdk` wired through real adapters |
+| LiteSVM suite | in `tests/litesvm`; builds the program artifact when `cargo build-sbf` is available and skips cleanly otherwise |
 
-The verify-first list (account order of `claim_position_fee`, position lock byte offsets, DBC
-migration shape, DLMM pool params) lives in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+**The whole thing targets devnet.** `resolveNetwork()` defaults to devnet and Meteora uses the same
+program IDs on every cluster, so the flow runs without real funds. See
+[docs/DEVNET.md](docs/DEVNET.md).
+
+```bash
+pnpm --filter @perpetua/sdk ops:extract-idls      # dump the Meteora IDLs we build against
+pnpm --filter @perpetua/sdk ops:verify-offsets    # check our byte offsets against live positions
+KEYPAIR=~/.config/solana/devnet.json pnpm --filter @perpetua/sdk ops:devnet-e2e
+```
 
 ## Docs
 
+- [docs/DEVNET.md](docs/DEVNET.md) — the devnet path, start here
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/VALUATION.md](docs/VALUATION.md)
 - [docs/SECURITY.md](docs/SECURITY.md)
 - [docs/JUDGES.md](docs/JUDGES.md) — the 5-minute path
-- [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) — Meteora integration points and the verify list
+- [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) — what is verified against the shipped IDLs, and what is left
 - [docs/LEGAL_NOTE.md](docs/LEGAL_NOTE.md)
 
 ## License

@@ -39,11 +39,15 @@ export interface ConfigAccountData {
 }
 
 export interface ClaimAccounts {
+  poolAuthority: PublicKey;
   pool: PublicKey;
   position: PublicKey;
   positionNftAccount: PublicKey;
   tokenAMint: PublicKey;
   tokenBMint: PublicKey;
+  tokenAVault: PublicKey;
+  tokenBVault: PublicKey;
+  eventAuthority: PublicKey;
   vaultAAccount: PublicKey;
   vaultBAccount: PublicKey;
   treasury: PublicKey;

@@ -1,17 +1,24 @@
 "use client";
 
+import type { Transaction } from "@solana/web3.js";
 import { useCallback, useEffect, useState } from "react";
 
-interface SolanaProvider {
+export interface SolanaProvider {
   connect(options?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: { toBase58(): string } }>;
   disconnect?(): Promise<void>;
   publicKey?: { toBase58(): string } | null;
+  signTransaction?(transaction: Transaction): Promise<Transaction>;
+  signAndSendTransaction?(transaction: Transaction): Promise<{ signature: string }>;
   on?(event: string, handler: () => void): void;
   removeListener?(event: string, handler: () => void): void;
 }
 
-function provider(): SolanaProvider | undefined {
+export function solanaProvider(): SolanaProvider | undefined {
   return (globalThis as unknown as { solana?: SolanaProvider }).solana;
+}
+
+function provider(): SolanaProvider | undefined {
+  return solanaProvider();
 }
 
 export function useSolanaWallet() {

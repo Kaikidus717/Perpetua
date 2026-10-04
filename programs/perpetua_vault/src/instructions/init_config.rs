@@ -13,7 +13,7 @@ pub struct InitConfig<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<InitConfig>, protocol_fee_bps: u16) -> Result<()> {
+pub fn handle_init_config(ctx: Context<InitConfig>, protocol_fee_bps: u16) -> Result<()> {
     let config = &mut ctx.accounts.config;
     config.admin = ctx.accounts.admin.key();
     config.treasury = ctx.accounts.admin.key();

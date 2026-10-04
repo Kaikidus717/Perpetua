@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",
+    "@meteora-ag/cp-amm-sdk": "1.5.1",
     "@perpetua/sdk": "workspace:*",
     "@perpetua/shared": "workspace:*",
     "@solana/spl-token": "0.4.9",

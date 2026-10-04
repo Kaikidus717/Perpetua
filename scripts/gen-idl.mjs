@@ -101,12 +101,18 @@ const ro = (name) => acc(name);
 const wr = (name) => acc(name, { writable: true });
 const sg = (name, flags = {}) => acc(name, { ...flags, signer: true });
 
+// Mirrors the fifteen accounts DAMM v2 `claim_position_fee` requires, plus the two
+// treasury accounts used for the optional protocol skim.
 const claimAccounts = [
-  wr("pool"),
+  ro("pool_authority"),
+  ro("pool"),
   wr("position"),
-  wr("position_nft_account"),
+  ro("position_nft_account"),
   ro("token_a_mint"),
   ro("token_b_mint"),
+  wr("token_a_vault"),
+  wr("token_b_vault"),
+  ro("event_authority"),
   wr("vault_a_account"),
   wr("vault_b_account"),
   ro("treasury"),

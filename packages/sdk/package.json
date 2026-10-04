@@ -33,6 +33,22 @@
     "./positions": {
       "types": "./dist/positions/eligibility.d.ts",
       "default": "./dist/positions/eligibility.js"
+    },
+    "./bins": {
+      "types": "./dist/sale/bins.d.ts",
+      "default": "./dist/sale/bins.js"
+    },
+    "./adapters/damm-v2": {
+      "types": "./dist/adapters/dammV2.d.ts",
+      "default": "./dist/adapters/dammV2.js"
+    },
+    "./adapters/dlmm": {
+      "types": "./dist/adapters/dlmm.d.ts",
+      "default": "./dist/adapters/dlmm.js"
+    },
+    "./adapters/dbc": {
+      "types": "./dist/adapters/dbc.d.ts",
+      "default": "./dist/adapters/dbc.js"
     }
   },
   "files": ["dist"],
@@ -41,10 +57,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
     "test": "vitest run",
     "ops:create-vault": "tsx scripts/create-vault.ts",
+    "ops:devnet-e2e": "tsx scripts/devnet-e2e.ts",
+    "ops:verify-offsets": "tsx scripts/verify-position-offsets.ts",
+    "ops:extract-idls": "node scripts/extract-meteora-idls.mjs",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",
+    "@meteora-ag/cp-amm-sdk": "1.5.1",
+    "@meteora-ag/dynamic-bonding-curve-sdk": "1.5.13",
+    "@meteora-ag/dlmm": "1.9.14",
     "@perpetua/shared": "workspace:*",
     "@solana/spl-token": "0.4.9",
     "@solana/web3.js": "1.99.0",
@@ -54,6 +76,7 @@
     "@types/bn.js": "5.1.6",
     "@types/node": "22.10.2",
     "rimraf": "6.0.1",
+    "tsx": "4.19.2",
     "typescript": "5.7.2",
     "vitest": "2.1.8"
   }

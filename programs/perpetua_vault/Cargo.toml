@@ -22,6 +22,6 @@ anchor-debug = []
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
 anchor-spl = "0.32.1"
 
-[dev-dependencies]
-litesvm = "0.4"
-solana-sdk = "2"
+# LiteSVM integration tests live in the `perpetua_vault_litesvm` crate (tests/litesvm) so that
+# `cargo test -p perpetua_vault` only builds the pure unit tests.
+

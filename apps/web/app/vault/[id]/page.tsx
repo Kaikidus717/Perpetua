@@ -1,6 +1,7 @@
 "use client";
 
 import { Stat } from "@/components/Stat";
+import { VaultActions } from "@/components/VaultActions";
 import { api } from "@/lib/api";
 import { explorerUrl, shortAddress } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
@@ -110,10 +111,7 @@ export default function VaultPage() {
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-edge bg-panel p-5 text-sm text-slate-400">
-        Staking and harvesting are signed by the holder&apos;s wallet. Connect a wallet from the
-        Securitize page to run the flow, or use the keeper to crank claims for you.
-      </section>
+      <VaultActions vault={address} />
     </div>
   );
 }

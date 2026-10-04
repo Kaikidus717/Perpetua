@@ -1,8 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
-use anchor_spl::token_interface::{TokenAccount as TokenAccount2022, TokenInterface};
+use anchor_spl::token_interface::{
+    Mint as InterfaceMint, TokenAccount as TokenAccount2022, TokenInterface,
+};
 
-use crate::constants::{STAKE_SEED, VAULT_SEED};
+use crate::constants::{CP_AMM_POOL_AUTHORITY, STAKE_SEED, VAULT_SEED};
 use crate::errors::PerpetuaError;
 use crate::events::Unstaked;
 use crate::instructions::touch::{settle, touch, ClaimAccounts};
@@ -15,19 +17,26 @@ pub struct UnstakeContext<'info> {
     pub config: Account<'info, Config>,
     #[account(mut, has_one = pool)]
     pub vault: Account<'info, Vault>,
+    /// CHECK: fixed cp-amm pool authority published in the cp-amm IDL.
+    #[account(address = CP_AMM_POOL_AUTHORITY)]
+    pub pool_authority: UncheckedAccount<'info>,
     /// CHECK: pinned to `Vault::pool` by the `has_one` constraint.
-    #[account(mut)]
     pub pool: UncheckedAccount<'info>,
     /// CHECK: DAMM v2 position account.
     #[account(mut)]
     pub position: UncheckedAccount<'info>,
     /// CHECK: position NFT account owned by the vault PDA.
-    #[account(mut)]
     pub position_nft_account: UncheckedAccount<'info>,
-    /// CHECK: fee mint A.
-    pub token_a_mint: UncheckedAccount<'info>,
-    /// CHECK: fee mint B.
-    pub token_b_mint: UncheckedAccount<'info>,
+    pub token_a_mint: InterfaceAccount<'info, InterfaceMint>,
+    pub token_b_mint: InterfaceAccount<'info, InterfaceMint>,
+    /// CHECK: pool token A vault, validated by cp-amm via `relations`.
+    #[account(mut)]
+    pub token_a_vault: UncheckedAccount<'info>,
+    /// CHECK: pool token B vault, validated by cp-amm via `relations`.
+    #[account(mut)]
+    pub token_b_vault: UncheckedAccount<'info>,
+    /// CHECK: cp-amm event authority PDA.
+    pub event_authority: UncheckedAccount<'info>,
     #[account(mut, token::mint = vault.token_a_mint, token::token_program = token_a_program)]
     pub vault_a_account: InterfaceAccount<'info, TokenAccount2022>,
     #[account(mut, token::mint = vault.token_b_mint, token::token_program = token_b_program)]
@@ -82,14 +91,18 @@ pub struct UnstakeNoClaim<'info> {
     pub share_token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<UnstakeContext>, amount: u64) -> Result<()> {
+pub fn handle_unstake(ctx: Context<UnstakeContext>, amount: u64) -> Result<()> {
     {
         let mut accounts = ClaimAccounts {
+            pool_authority: ctx.accounts.pool_authority.to_account_info(),
             pool: ctx.accounts.pool.to_account_info(),
             position: ctx.accounts.position.to_account_info(),
             position_nft_account: ctx.accounts.position_nft_account.to_account_info(),
-            token_a_mint: ctx.accounts.token_a_mint.to_account_info(),
-            token_b_mint: ctx.accounts.token_b_mint.to_account_info(),
+            token_a_mint: ctx.accounts.token_a_mint.clone(),
+            token_b_mint: ctx.accounts.token_b_mint.clone(),
+            token_a_vault: ctx.accounts.token_a_vault.to_account_info(),
+            token_b_vault: ctx.accounts.token_b_vault.to_account_info(),
+            event_authority: ctx.accounts.event_authority.to_account_info(),
             vault_a_account: ctx.accounts.vault_a_account.clone(),
             vault_b_account: ctx.accounts.vault_b_account.clone(),
             treasury_a_account: ctx.accounts.treasury_a_account.clone(),
@@ -113,7 +126,7 @@ pub fn handler(ctx: Context<UnstakeContext>, amount: u64) -> Result<()> {
     )
 }
 
-pub fn handler_no_claim(ctx: Context<UnstakeNoClaim>, amount: u64) -> Result<()> {
+pub fn handle_unstake_no_claim(ctx: Context<UnstakeNoClaim>, amount: u64) -> Result<()> {
     settle(&mut ctx.accounts.stake, &ctx.accounts.vault)?;
     release_shares(
         &mut ctx.accounts.stake,

@@ -1,3 +1,4 @@
+import { DammV2Adapter } from "@perpetua/sdk/adapters/damm-v2";
 import { buildFinanceablePreset, validatePreset } from "@perpetua/sdk/dbc";
 import type { DataApiPort } from "@perpetua/sdk/ports";
 import { buildLadder } from "@perpetua/sdk/sale";
@@ -11,17 +12,21 @@ import {
   type ValuationRiskInput,
 } from "@perpetua/shared";
 import { valuePosition } from "@perpetua/valuation";
+import { type Connection, PublicKey } from "@solana/web3.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Store } from "./store/types.js";
+import { buildCrankClaim, buildCreateVault, buildHarvest, buildStake, buildUnstake } from "./tx.js";
 
 export interface AppDeps {
   store: Store;
   dataApi: DataApiPort;
   demoPool?: string;
   demoWallet?: string;
+  /// When set, the `/v1/tx/*` routes can build unsigned transactions for wallets.
+  connection?: Connection;
 }
 
 const DEFAULT_RISK: ValuationRiskInput = {
@@ -43,6 +48,25 @@ const valuationQuery = z.object({
 });
 
 const limitQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).default(50) });
+
+const pubkey = z.string().min(32).max(44);
+
+const createVaultBody = z.object({
+  creator: pubkey,
+  pool: pubkey,
+  position: pubkey,
+  positionNftMint: pubkey,
+  positionNftAccount: pubkey,
+  positionNftProgram: pubkey,
+  tokenAMint: pubkey,
+  tokenBMint: pubkey,
+  tokenAProgram: pubkey,
+  tokenBProgram: pubkey,
+  shareMint: pubkey,
+});
+
+const ownerVaultBody = z.object({ owner: pubkey, vault: pubkey });
+const stakeBody = ownerVaultBody.extend({ amount: z.string().regex(/^\d+$/) });
 
 const presetQuery = z.object({
   creatorTradingFeePct: z.coerce.number().min(0).max(100).default(10),
@@ -99,6 +123,19 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ positions });
   });
 
+  // On-chain position detail straight from the DAMM v2 program, including the derived
+  // NFT token account and token programs needed to build `create_vault`.
+  app.get("/v1/positions/:wallet/onchain", async (c) => {
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    try {
+      const adapter = new DammV2Adapter(deps.connection);
+      const positions = await adapter.walletPositionDetails(new PublicKey(c.req.param("wallet")));
+      return c.json({ positions });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "lookup failed" }, 400);
+    }
+  });
+
   app.get("/v1/valuation/:position", async (c) => {
     const parsed = valuationQuery.safeParse(c.req.query());
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
@@ -146,6 +183,51 @@ export function createApp(deps: AppDeps): Hono {
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "invalid ladder" }, 400);
     }
+  });
+
+  app.post("/v1/tx/create-vault", async (c) => {
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = createVaultBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    return c.json({ transaction: await buildCreateVault(deps.connection, parsed.data) });
+  });
+
+  app.post("/v1/tx/crank-claim", async (c) => {
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = ownerVaultBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    return c.json({
+      transaction: await buildCrankClaim(deps.connection, {
+        caller: parsed.data.owner,
+        vault: parsed.data.vault,
+      }),
+    });
+  });
+
+  app.post("/v1/tx/stake", async (c) => {
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    return c.json({ transaction: await buildStake(deps.connection, parsed.data) });
+  });
+
+  app.post("/v1/tx/unstake", async (c) => {
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    return c.json({ transaction: await buildUnstake(deps.connection, parsed.data) });
+  });
+
+  app.post("/v1/tx/harvest", async (c) => {
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = ownerVaultBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    return c.json({
+      transaction: await buildHarvest(deps.connection, {
+        owner: parsed.data.owner,
+        vault: parsed.data.vault,
+      }),
+    });
   });
 
   app.get("/v1/stats", async (c) => c.json({ stats: await deps.store.stats() }));

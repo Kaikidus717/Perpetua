@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
 import { PerpetuaVaultClient } from "@perpetua/sdk";
+import { resolveNetwork } from "@perpetua/shared";
 import { Connection, Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
 import { Keeper } from "./keeper.js";
 import { RpcCrankPort } from "./rpcCrankPort.js";
 
-const rpcUrl = process.env.RPC_URL ?? "https://api.mainnet-beta.solana.com";
+const network = resolveNetwork(process.env.CLUSTER);
+const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
 const keypairPath = process.env.KEYPAIR;
 if (!keypairPath) throw new Error("KEYPAIR env var is required (path to a solana keypair json)");
 
@@ -21,7 +23,7 @@ const wallet: Wallet = {
 const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
 
 const keeper = new Keeper(new RpcCrankPort(PerpetuaVaultClient.create(provider), provider), {
-  thresholdUsd: Number(process.env.CRANK_THRESHOLD_USD ?? 0),
+  thresholdBaseUnits: BigInt(process.env.CRANK_THRESHOLD_BASE_UNITS ?? "0"),
   intervalMs: Number(process.env.CRANK_INTERVAL_MS ?? 120_000),
 });
 

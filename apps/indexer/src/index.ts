@@ -1,12 +1,14 @@
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
 import { InMemoryStore, type Store } from "@perpetua/api";
 import { PerpetuaVaultClient } from "@perpetua/sdk";
+import { resolveNetwork } from "@perpetua/shared";
 import { Connection, Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
 import { MeteoraDataApi } from "./dataApi.js";
 import { Indexer } from "./indexer.js";
 
-const rpcUrl = process.env.RPC_URL ?? "https://api.mainnet-beta.solana.com";
-const dataApiUrl = process.env.METEORA_DATA_API ?? "https://dlmm.datapi.meteora.ag";
+const network = resolveNetwork(process.env.CLUSTER);
+const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
+const dataApiUrl = process.env.METEORA_DATA_API ?? network.dlmmDataApi;
 const databaseUrl = process.env.DATABASE_URL;
 
 async function resolveStore(): Promise<Store> {

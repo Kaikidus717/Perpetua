@@ -145,22 +145,34 @@ export const PERPETUA_VAULT_IDL = {
           "writable": true
         },
         {
-          "name": "pool",
-          "writable": true
+          "name": "poolAuthority"
+        },
+        {
+          "name": "pool"
         },
         {
           "name": "position",
           "writable": true
         },
         {
-          "name": "positionNftAccount",
-          "writable": true
+          "name": "positionNftAccount"
         },
         {
           "name": "tokenAMint"
         },
         {
           "name": "tokenBMint"
+        },
+        {
+          "name": "tokenAVault",
+          "writable": true
+        },
+        {
+          "name": "tokenBVault",
+          "writable": true
+        },
+        {
+          "name": "eventAuthority"
         },
         {
           "name": "vaultAAccount",
@@ -219,22 +231,34 @@ export const PERPETUA_VAULT_IDL = {
           "writable": true
         },
         {
-          "name": "pool",
-          "writable": true
+          "name": "poolAuthority"
+        },
+        {
+          "name": "pool"
         },
         {
           "name": "position",
           "writable": true
         },
         {
-          "name": "positionNftAccount",
-          "writable": true
+          "name": "positionNftAccount"
         },
         {
           "name": "tokenAMint"
         },
         {
           "name": "tokenBMint"
+        },
+        {
+          "name": "tokenAVault",
+          "writable": true
+        },
+        {
+          "name": "tokenBVault",
+          "writable": true
+        },
+        {
+          "name": "eventAuthority"
         },
         {
           "name": "vaultAAccount",
@@ -319,22 +343,34 @@ export const PERPETUA_VAULT_IDL = {
           "writable": true
         },
         {
-          "name": "pool",
-          "writable": true
+          "name": "poolAuthority"
+        },
+        {
+          "name": "pool"
         },
         {
           "name": "position",
           "writable": true
         },
         {
-          "name": "positionNftAccount",
-          "writable": true
+          "name": "positionNftAccount"
         },
         {
           "name": "tokenAMint"
         },
         {
           "name": "tokenBMint"
+        },
+        {
+          "name": "tokenAVault",
+          "writable": true
+        },
+        {
+          "name": "tokenBVault",
+          "writable": true
+        },
+        {
+          "name": "eventAuthority"
         },
         {
           "name": "vaultAAccount",

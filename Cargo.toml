@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/perpetua_vault"]
+members = ["programs/perpetua_vault", "tests/litesvm"]
 resolver = "2"
 
 [profile.release]

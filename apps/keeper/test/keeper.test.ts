@@ -22,14 +22,14 @@ class FakePort implements CrankPort {
   cranked: string[] = [];
   constructor(
     private readonly refs: VaultRef[],
-    private readonly claimable: number,
+    private readonly claimable: bigint,
   ) {}
 
   async listVaultRefs(): Promise<VaultRef[]> {
     return this.refs;
   }
 
-  async claimableUsd(): Promise<number> {
+  async claimableBaseUnits(): Promise<bigint> {
     return this.claimable;
   }
 
@@ -49,16 +49,16 @@ describe("Keeper", () => {
   });
 
   it("cranks every vault that clears the threshold", async () => {
-    const port = new FakePort([ref(), ref()], 100);
-    const keeper = new Keeper(port, { thresholdUsd: 10, intervalMs: 1000 });
+    const port = new FakePort([ref(), ref()], 100n);
+    const keeper = new Keeper(port, { thresholdBaseUnits: 10n, intervalMs: 1000 });
     const summary = await keeper.runOnce();
     expect(summary.considered).toBe(2);
     expect(summary.cranked).toHaveLength(2);
   });
 
   it("skips all vaults when below the threshold", async () => {
-    const port = new FakePort([ref()], 1);
-    const keeper = new Keeper(port, { thresholdUsd: 10, intervalMs: 1000 });
+    const port = new FakePort([ref()], 1n);
+    const keeper = new Keeper(port, { thresholdBaseUnits: 10n, intervalMs: 1000 });
     const summary = await keeper.runOnce();
     expect(summary.cranked).toEqual([]);
     expect(port.cranked).toEqual([]);

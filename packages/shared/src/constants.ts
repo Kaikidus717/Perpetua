@@ -7,6 +7,12 @@ export const PROGRAM_IDS = {
 
 export type ProgramName = keyof typeof PROGRAM_IDS;
 
+/// Fixed pool authority published in the DAMM v2 (cp-amm) IDL.
+export const CP_AMM_POOL_AUTHORITY = "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC";
+
+/// cp-amm event authority PDA seed, used for its Anchor event CPI.
+export const EVENT_AUTHORITY_SEED = "__event_authority";
+
 export const FEE_PER_SHARE_PRECISION = 10n ** 18n;
 
 export const SHARE_DECIMALS = 6;

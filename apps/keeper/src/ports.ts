@@ -9,6 +9,7 @@ export interface VaultRef {
 
 export interface CrankPort {
   listVaultRefs(): Promise<VaultRef[]>;
-  claimableUsd(vault: PublicKey): Promise<number>;
+  /// Claimable fees in base units of both mints, read from the DAMM v2 position.
+  claimableBaseUnits(vault: PublicKey): Promise<bigint>;
   crank(vault: PublicKey): Promise<string>;
 }

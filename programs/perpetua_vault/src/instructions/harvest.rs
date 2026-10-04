@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{self, TokenAccount, TokenInterface, TransferChecked};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::constants::{STAKE_SEED, VAULT_SEED};
 use crate::errors::PerpetuaError;
@@ -21,10 +21,8 @@ pub struct Harvest<'info> {
         bump = stake.bump
     )]
     pub stake: Account<'info, Stake>,
-    /// CHECK: fee mint A.
-    pub token_a_mint: UncheckedAccount<'info>,
-    /// CHECK: fee mint B.
-    pub token_b_mint: UncheckedAccount<'info>,
+    pub token_a_mint: InterfaceAccount<'info, Mint>,
+    pub token_b_mint: InterfaceAccount<'info, Mint>,
     #[account(mut, token::mint = vault.token_a_mint, token::token_program = token_a_program)]
     pub vault_a_account: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, token::mint = vault.token_b_mint, token::token_program = token_b_program)]
@@ -37,7 +35,7 @@ pub struct Harvest<'info> {
     pub token_b_program: Interface<'info, TokenInterface>,
 }
 
-pub fn handler(ctx: Context<Harvest>) -> Result<()> {
+pub fn handle_harvest(ctx: Context<Harvest>) -> Result<()> {
     settle(&mut ctx.accounts.stake, &ctx.accounts.vault)?;
 
     let amount_a = ctx.accounts.stake.pending_a;
@@ -61,7 +59,7 @@ pub fn handler(ctx: Context<Harvest>) -> Result<()> {
                 signer_seeds,
             ),
             amount_a,
-            ctx.accounts.vault_a_account.decimals,
+            ctx.accounts.token_a_mint.decimals,
         )?;
     }
     if amount_b > 0 {
@@ -77,7 +75,7 @@ pub fn handler(ctx: Context<Harvest>) -> Result<()> {
                 signer_seeds,
             ),
             amount_b,
-            ctx.accounts.vault_b_account.decimals,
+            ctx.accounts.token_b_mint.decimals,
         )?;
     }
 

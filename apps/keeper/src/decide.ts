@@ -3,16 +3,16 @@ export interface CrankDecision {
   reason: string;
 }
 
-export function shouldCrank(claimableUsd: number, thresholdUsd: number): CrankDecision {
-  if (thresholdUsd <= 0) return { crank: true, reason: "threshold disabled" };
-  if (claimableUsd < thresholdUsd) {
+export function shouldCrank(claimableBaseUnits: bigint, thresholdBaseUnits: bigint): CrankDecision {
+  if (thresholdBaseUnits <= 0n) return { crank: true, reason: "threshold disabled" };
+  if (claimableBaseUnits < thresholdBaseUnits) {
     return {
       crank: false,
-      reason: `claimable ${claimableUsd.toFixed(2)} below threshold ${thresholdUsd}`,
+      reason: `claimable ${claimableBaseUnits} below threshold ${thresholdBaseUnits}`,
     };
   }
   return {
     crank: true,
-    reason: `claimable ${claimableUsd.toFixed(2)} reached threshold ${thresholdUsd}`,
+    reason: `claimable ${claimableBaseUnits} reached threshold ${thresholdBaseUnits}`,
   };
 }

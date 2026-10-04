@@ -1,0 +1,16 @@
+[package]
+name = "perpetua_vault_litesvm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+litesvm = "0.17"
+solana-sdk = "2"
+
+[[test]]
+name = "boot"
+path = "tests/boot.rs"

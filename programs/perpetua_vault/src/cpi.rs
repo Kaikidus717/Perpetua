@@ -4,7 +4,8 @@ use anchor_lang::solana_program::program::invoke_signed;
 
 use crate::constants::{
     AUTHORITY_ACCOUNT_OWNER, AUTHORITY_MINT_TOKENS, CP_AMM_CLAIM_POSITION_FEE_DISCRIMINATOR,
-    TOKEN_SET_AUTHORITY,
+    POSITION_MIN_LEN, POSITION_PERMANENT_LOCK_OFFSET, POSITION_UNLOCKED_OFFSET,
+    POSITION_VESTED_OFFSET, TOKEN_SET_AUTHORITY,
 };
 use crate::errors::PerpetuaError;
 
@@ -59,52 +60,92 @@ pub fn revoke_mint_authority<'info>(
     Ok(())
 }
 
-/// CPI into DAMM v2 `claim_position_fee`, signed by the vault PDA.
-///
-/// Account order must be confirmed against the deployed cp-amm IDL before mainnet
-/// use; it is listed in docs/INTEGRATIONS.md.
-pub fn claim_position_fee<'info>(
-    cp_amm_program: &AccountInfo<'info>,
-    accounts: &[AccountInfo<'info>],
-    signer_seeds: &[&[&[u8]]],
-) -> Result<()> {
-    let instruction = Instruction {
-        program_id: *cp_amm_program.key,
-        accounts: accounts
-            .iter()
-            .map(|account| {
-                if account.is_writable {
-                    AccountMeta::new(*account.key, account.is_signer)
-                } else {
-                    AccountMeta::new_readonly(*account.key, account.is_signer)
-                }
-            })
-            .collect(),
-        data: CP_AMM_CLAIM_POSITION_FEE_DISCRIMINATOR.to_vec(),
-    };
-    let mut infos = Vec::with_capacity(accounts.len() + 1);
-    infos.push(cp_amm_program.clone());
-    infos.extend_from_slice(accounts);
-    invoke_signed(&instruction, &infos, signer_seeds)?;
-    Ok(())
-}
-
 pub struct PositionLock {
     pub unlocked: u128,
     pub vested: u128,
     pub permanent_locked: u128,
 }
 
-// Byte offsets into the DAMM v2 position account. Confirm against the DAMM v2 IDL
-// before deploying; see docs/INTEGRATIONS.md ("verify list").
-const POSITION_LOCK_OFFSET: usize = 8 + 32 + 32 + 32 + 1 + 1;
-const POSITION_MIN_LEN: usize = POSITION_LOCK_OFFSET + 16 * 3;
+/// The fifteen accounts DAMM v2 `claim_position_fee` expects, in IDL order.
+pub struct ClaimCpiAccounts<'info> {
+    pub pool_authority: AccountInfo<'info>,
+    pub pool: AccountInfo<'info>,
+    pub position: AccountInfo<'info>,
+    pub token_a_account: AccountInfo<'info>,
+    pub token_b_account: AccountInfo<'info>,
+    pub token_a_vault: AccountInfo<'info>,
+    pub token_b_vault: AccountInfo<'info>,
+    pub token_a_mint: AccountInfo<'info>,
+    pub token_b_mint: AccountInfo<'info>,
+    pub position_nft_account: AccountInfo<'info>,
+    pub signer: AccountInfo<'info>,
+    pub token_a_program: AccountInfo<'info>,
+    pub token_b_program: AccountInfo<'info>,
+    pub event_authority: AccountInfo<'info>,
+    pub program: AccountInfo<'info>,
+}
+
+impl<'info> ClaimCpiAccounts<'info> {
+    fn metas(&self) -> Vec<AccountMeta> {
+        vec![
+            AccountMeta::new_readonly(*self.pool_authority.key, false),
+            AccountMeta::new_readonly(*self.pool.key, false),
+            AccountMeta::new(*self.position.key, false),
+            AccountMeta::new(*self.token_a_account.key, false),
+            AccountMeta::new(*self.token_b_account.key, false),
+            AccountMeta::new(*self.token_a_vault.key, false),
+            AccountMeta::new(*self.token_b_vault.key, false),
+            AccountMeta::new_readonly(*self.token_a_mint.key, false),
+            AccountMeta::new_readonly(*self.token_b_mint.key, false),
+            AccountMeta::new_readonly(*self.position_nft_account.key, false),
+            AccountMeta::new_readonly(*self.signer.key, true),
+            AccountMeta::new_readonly(*self.token_a_program.key, false),
+            AccountMeta::new_readonly(*self.token_b_program.key, false),
+            AccountMeta::new_readonly(*self.event_authority.key, false),
+            AccountMeta::new_readonly(*self.program.key, false),
+        ]
+    }
+
+    fn infos(&self) -> Vec<AccountInfo<'info>> {
+        vec![
+            self.pool_authority.clone(),
+            self.pool.clone(),
+            self.position.clone(),
+            self.token_a_account.clone(),
+            self.token_b_account.clone(),
+            self.token_a_vault.clone(),
+            self.token_b_vault.clone(),
+            self.token_a_mint.clone(),
+            self.token_b_mint.clone(),
+            self.position_nft_account.clone(),
+            self.signer.clone(),
+            self.token_a_program.clone(),
+            self.token_b_program.clone(),
+            self.event_authority.clone(),
+            self.program.clone(),
+        ]
+    }
+}
+
+/// CPIs into DAMM v2 `claim_position_fee`, signed by the vault PDA.
+pub fn claim_position_fee<'info>(
+    accounts: ClaimCpiAccounts<'info>,
+    signer_seeds: &[&[&[u8]]],
+) -> Result<()> {
+    let instruction = Instruction {
+        program_id: *accounts.program.key,
+        accounts: accounts.metas(),
+        data: CP_AMM_CLAIM_POSITION_FEE_DISCRIMINATOR.to_vec(),
+    };
+    invoke_signed(&instruction, &accounts.infos(), signer_seeds)?;
+    Ok(())
+}
 
 pub fn parse_position_lock(data: &[u8]) -> Result<PositionLock> {
     require!(data.len() >= POSITION_MIN_LEN, PerpetuaError::PositionNotFullyLocked);
-    let unlocked = read_u128(data, POSITION_LOCK_OFFSET)?;
-    let vested = read_u128(data, POSITION_LOCK_OFFSET + 16)?;
-    let permanent_locked = read_u128(data, POSITION_LOCK_OFFSET + 32)?;
+    let unlocked = read_u128(data, POSITION_UNLOCKED_OFFSET)?;
+    let vested = read_u128(data, POSITION_VESTED_OFFSET)?;
+    let permanent_locked = read_u128(data, POSITION_PERMANENT_LOCK_OFFSET)?;
     Ok(PositionLock { unlocked, vested, permanent_locked })
 }
 

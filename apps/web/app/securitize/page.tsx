@@ -3,7 +3,8 @@
 import { Stat } from "@/components/Stat";
 import { api } from "@/lib/api";
 import { compactUsd, explorerUrl, shortAddress, usd } from "@/lib/format";
-import { useSolanaWallet } from "@/lib/wallet";
+import { type SecuritizeResult, securitize } from "@/lib/tx";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -29,7 +30,7 @@ export default function SecuritizePage() {
 
   const positions = useQuery({
     queryKey: ["positions", target],
-    queryFn: () => (target ? api.positions(target) : Promise.reject(new Error("no wallet"))),
+    queryFn: () => (target ? api.positionsOnchain(target) : Promise.reject(new Error("no wallet"))),
     enabled: Boolean(target),
   });
 
@@ -48,6 +49,38 @@ export default function SecuritizePage() {
   });
 
   const check = position ? eligibility(position) : null;
+  const [busy, setBusy] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [result, setResult] = useState<SecuritizeResult | null>(null);
+
+  async function runSecuritize() {
+    const detected = solanaProvider();
+    if (!detected || !position) {
+      setTxError("Connect a wallet first.");
+      return;
+    }
+    setBusy(true);
+    setTxError(null);
+    try {
+      setResult(
+        await securitize(detected, {
+          pool: position.pool,
+          position: position.address,
+          positionNftMint: position.nftMint,
+          positionNftAccount: position.nftAccount,
+          positionNftProgram: position.positionNftProgram,
+          tokenAMint: position.tokenAMint,
+          tokenBMint: position.tokenBMint,
+          tokenAProgram: position.tokenAProgram,
+          tokenBProgram: position.tokenBProgram,
+        }),
+      );
+    } catch (cause) {
+      setTxError(cause instanceof Error ? cause.message : "transaction failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -135,6 +168,34 @@ export default function SecuritizePage() {
           </div>
         ) : null}
       </section>
+
+      {position ? (
+        <section className="space-y-3">
+          <button
+            type="button"
+            onClick={() => void runSecuritize()}
+            disabled={busy || !check?.eligible}
+            className="rounded-lg border border-accent/40 bg-accent/10 px-5 py-2.5 text-sm font-medium text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? "waiting for signature…" : "Securitize position"}
+          </button>
+          {txError ? <p className="text-sm text-amber-300">{txError}</p> : null}
+          {result ? (
+            <div className="space-y-1 rounded-lg border border-accent/40 bg-accent/5 p-4 text-sm">
+              <p className="text-accent">vault created</p>
+              <p className="font-mono text-xs text-slate-400">share mint {result.shareMint}</p>
+              <a
+                href={`https://solscan.io/tx/${result.signature}?cluster=devnet`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-xs text-accent"
+              >
+                {shortAddress(result.signature)} ↗
+              </a>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {valuation.data ? (
         <>

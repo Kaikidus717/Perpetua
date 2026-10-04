@@ -54,7 +54,7 @@ pub struct CreateVault<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handler(ctx: Context<CreateVault>) -> Result<()> {
+pub fn handle_create_vault(ctx: Context<CreateVault>) -> Result<()> {
     let lock = cpi::parse_position_lock(&ctx.accounts.position.data.borrow())?;
     require!(
         lock.unlocked == 0 && lock.vested == 0,
@@ -76,30 +76,34 @@ pub fn handler(ctx: Context<CreateVault>) -> Result<()> {
         vault_key,
     )?;
 
-    let vault = &mut ctx.accounts.vault;
-    vault.pool = ctx.accounts.pool.key();
-    vault.position = ctx.accounts.position.key();
-    vault.position_nft_mint = ctx.accounts.position_nft_mint.key();
-    vault.position_nft_account = ctx.accounts.position_nft_account.key();
-    vault.token_a_mint = ctx.accounts.token_a_mint.key();
-    vault.token_b_mint = ctx.accounts.token_b_mint.key();
-    vault.token_a_program = ctx.accounts.token_a_program.key();
-    vault.token_b_program = ctx.accounts.token_b_program.key();
-    vault.share_mint = ctx.accounts.share_mint.key();
-    vault.total_staked = 0;
-    vault.acc_fee_per_share_a = 0;
-    vault.acc_fee_per_share_b = 0;
-    vault.carry_a = 0;
-    vault.carry_b = 0;
-    vault.total_claimed_a = 0;
-    vault.total_claimed_b = 0;
-    vault.creator = ctx.accounts.creator.key();
-    vault.created_at = Clock::get()?.unix_timestamp;
-    vault.bump = ctx.bumps.vault;
+    let created_at = Clock::get()?.unix_timestamp;
+    {
+        let vault = &mut ctx.accounts.vault;
+        vault.pool = ctx.accounts.pool.key();
+        vault.position = ctx.accounts.position.key();
+        vault.position_nft_mint = ctx.accounts.position_nft_mint.key();
+        vault.position_nft_account = ctx.accounts.position_nft_account.key();
+        vault.token_a_mint = ctx.accounts.token_a_mint.key();
+        vault.token_b_mint = ctx.accounts.token_b_mint.key();
+        vault.token_a_program = ctx.accounts.token_a_program.key();
+        vault.token_b_program = ctx.accounts.token_b_program.key();
+        vault.share_mint = ctx.accounts.share_mint.key();
+        vault.total_staked = 0;
+        vault.acc_fee_per_share_a = 0;
+        vault.acc_fee_per_share_b = 0;
+        vault.carry_a = 0;
+        vault.carry_b = 0;
+        vault.total_claimed_a = 0;
+        vault.total_claimed_b = 0;
+        vault.creator = ctx.accounts.creator.key();
+        vault.created_at = created_at;
+        vault.bump = ctx.bumps.vault;
+    }
 
-    mint_full_supply(ctx)?;
-    revoke_share_mint_authority(ctx)?;
+    mint_full_supply(&ctx)?;
+    revoke_share_mint_authority(&ctx)?;
 
+    let vault = &ctx.accounts.vault;
     emit!(VaultCreated {
         vault: vault_key,
         pool: vault.pool,
@@ -110,7 +114,7 @@ pub fn handler(ctx: Context<CreateVault>) -> Result<()> {
     Ok(())
 }
 
-fn mint_full_supply(ctx: Context<CreateVault>) -> Result<()> {
+fn mint_full_supply(ctx: &Context<CreateVault>) -> Result<()> {
     token::mint_to(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -124,7 +128,7 @@ fn mint_full_supply(ctx: Context<CreateVault>) -> Result<()> {
     )
 }
 
-fn revoke_share_mint_authority(ctx: Context<CreateVault>) -> Result<()> {
+fn revoke_share_mint_authority(ctx: &Context<CreateVault>) -> Result<()> {
     cpi::revoke_mint_authority(
         &ctx.accounts.token_program.to_account_info(),
         &ctx.accounts.share_mint.to_account_info(),

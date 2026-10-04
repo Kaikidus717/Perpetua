@@ -1,6 +1,14 @@
+import { EVENT_AUTHORITY_SEED, PROGRAM_IDS } from "@perpetua/shared";
 import { PublicKey } from "@solana/web3.js";
 
 const seed = (label: string): Uint8Array => Uint8Array.from(label, (char) => char.charCodeAt(0));
+
+export function findCpAmmEventAuthority(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [seed(EVENT_AUTHORITY_SEED)],
+    new PublicKey(PROGRAM_IDS.dammV2),
+  );
+}
 
 export function findConfigPda(programId: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([seed("config")], programId);

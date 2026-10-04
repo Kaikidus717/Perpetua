@@ -1,5 +1,7 @@
 import { serve } from "@hono/node-server";
 import { StaticDataApi } from "@perpetua/sdk/data";
+import { resolveNetwork } from "@perpetua/shared";
+import { Connection } from "@solana/web3.js";
 import { createApp } from "./app.js";
 import { DEMO_POOL, DEMO_WALLET, demoPools, demoPositions } from "./demo.js";
 import { InMemoryStore } from "./store/memory.js";
@@ -7,6 +9,9 @@ import type { Store } from "./store/types.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const databaseUrl = process.env.DATABASE_URL;
+const network = resolveNetwork(process.env.CLUSTER);
+const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
+const connection = new Connection(rpcUrl, "confirmed");
 
 // The Postgres driver is only loaded when a database is configured, so the default
 // in-memory mode starts without pulling drizzle-orm into the process.
@@ -21,8 +26,15 @@ async function resolveStore(): Promise<Store> {
 
 const store = await resolveStore();
 const dataApi = new StaticDataApi(demoPools(), demoPositions());
-const app = createApp({ store, dataApi, demoPool: DEMO_POOL, demoWallet: DEMO_WALLET });
+const app = createApp({
+  store,
+  dataApi,
+  demoPool: DEMO_POOL,
+  demoWallet: DEMO_WALLET,
+  connection,
+});
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`perpetua api listening on http://localhost:${info.port}`);
+  console.log(`cluster ${network.cluster} via ${rpcUrl}`);
 });

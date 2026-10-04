@@ -2,7 +2,8 @@ import { shouldCrank } from "./decide.js";
 import type { CrankPort } from "./ports.js";
 
 export interface KeeperOptions {
-  thresholdUsd: number;
+  /// Minimum claimable fees, in base units, before a vault is cranked. 0 cranks every tick.
+  thresholdBaseUnits: bigint;
   intervalMs: number;
 }
 
@@ -23,8 +24,8 @@ export class Keeper {
     const refs = await this.port.listVaultRefs();
     const cranked: string[] = [];
     for (const ref of refs) {
-      const claimable = await this.port.claimableUsd(ref.address);
-      if (shouldCrank(claimable, this.options.thresholdUsd).crank) {
+      const claimable = await this.port.claimableBaseUnits(ref.address);
+      if (shouldCrank(claimable, this.options.thresholdBaseUnits).crank) {
         cranked.push(await this.port.crank(ref.address));
       }
     }

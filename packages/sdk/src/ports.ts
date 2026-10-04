@@ -6,25 +6,67 @@ export interface DataApiPort {
   walletPositions(wallet: string): Promise<PositionSummary[]>;
 }
 
+export interface DlmmPreset {
+  address: string;
+  binStep: number;
+}
+
+export interface SharePoolParams {
+  owner: string;
+  shareMint: string;
+  quoteMint: string;
+  presetParameter: string;
+  binStep: number;
+  /// Price of one share expressed in quote token units.
+  initialPrice: number;
+}
+
+export interface SeedLadderParams {
+  owner: string;
+  poolAddress: string;
+  shareMint: string;
+  plan: LadderPlan;
+  binStep: number;
+}
+
 export interface SeedLadderResult {
   poolAddress: string;
   positionAddress: string;
-  binsSeeded: number;
+  minBinId: number;
+  maxBinId: number;
+  sharesOffered: number;
 }
 
 export interface DlmmPort {
-  ensureSharePool(params: {
-    shareMint: string;
-    quoteMint: string;
-    binStep: number;
-    baseFeeBps: number;
-  }): Promise<string>;
-  seedOneSidedAsk(params: {
-    poolAddress: string;
-    owner: string;
-    plan: LadderPlan;
-    shareMint: string;
-  }): Promise<SeedLadderResult>;
+  /// Presets available for permissionless pair creation on this cluster.
+  listPresets(): Promise<DlmmPreset[]>;
+  /// Creates the `pFEE/quote` pair if it does not exist, returns the pool address.
+  ensureSharePool(params: SharePoolParams): Promise<string>;
+  /// Seeds the one-sided ask ladder as a single BidAsk position over the plan range.
+  seedOneSidedAsk(params: SeedLadderParams): Promise<SeedLadderResult>;
+}
+
+export interface DbcConfigParams {
+  creator: string;
+  feeClaimer: string;
+  leftoverReceiver: string;
+  quoteMint: string;
+  totalTokenSupply: number;
+  creatorTradingFeePercentage: number;
+  partnerLiquidityPercentage: number;
+  partnerPermanentLockedLiquidityPercentage: number;
+  creatorLiquidityPercentage: number;
+  creatorPermanentLockedLiquidityPercentage: number;
+}
+
+export interface DbcPoolParams {
+  creator: string;
+  config: string;
+  baseMint: string;
+  quoteMint: string;
+  name: string;
+  symbol: string;
+  uri: string;
 }
 
 export interface DbcLaunchResult {
@@ -33,11 +75,6 @@ export interface DbcLaunchResult {
 }
 
 export interface DbcPort {
-  createConfig(preset: unknown): Promise<string>;
-  createPool(params: {
-    config: string;
-    name: string;
-    symbol: string;
-    uri: string;
-  }): Promise<DbcLaunchResult>;
+  createConfig(params: DbcConfigParams): Promise<string>;
+  createPool(params: DbcPoolParams): Promise<DbcLaunchResult>;
 }

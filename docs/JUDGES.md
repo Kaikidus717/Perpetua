@@ -56,13 +56,26 @@ the JIT-staking attack, fixed supply, zero-fee no-op and paused-mint exits.
 `/kpi` shows vaults, positions securitized, fees distributed, unique stakers and DLMM volume, all
 sourced from the indexer API.
 
-## What is not wired yet (being explicit)
+## Real, and what is left
 
-- The **web UI does not sign transactions.** The privileged flow (`create_vault`, DLMM ladder
-  seeding) runs through `packages/sdk/scripts/create-vault.ts` so operator keys never reach a
-  browser.
-- The **DLMM pool creation and ladder seeding** are planned and priced by the app, but the actual
-  `@meteora-ag/dlmm` calls sit behind the `DlmmPort` interface in `packages/sdk/src/ports.ts`, which
-  is not yet implemented against the live SDK.
-- The Meteora data API response shape is normalised in `apps/indexer/src/dataApi.ts`; confirm the
-  endpoint paths in [INTEGRATIONS.md](INTEGRATIONS.md) before pointing it at production.
+Real and running:
+
+- **The web UI signs.** `/securitize` sends `create_vault`; `/vault/[id]` has stake, unstake, harvest
+  and crank. Transactions are built by the API (`apps/api/src/tx.ts`) and returned as base64, so the
+  browser only needs `@solana/web3.js` and the wallet — not Anchor or the Meteora SDKs.
+- **The Meteora SDKs are wired**, not stubbed: `DammV2Adapter` reads positions and lock buckets and
+  derives the full `claim_position_fee` account set from pool state; `DlmmAdapter` builds the
+  permissionless pair and the one-sided ask ladder; `DbcAdapter` builds the financeable config.
+- **The program compiles and its logic is tested**: `cargo test -p perpetua_vault` → 7/7.
+- **The position-lock offsets are verified against live on-chain accounts**, not assumed:
+  `pnpm --filter @perpetua/sdk ops:verify-offsets`.
+
+Left, stated plainly:
+
+- **`cargo build-sbf`** needs the Solana platform tools, which download from GitHub releases. On a
+  network that cannot reach GitHub, build the `.so` elsewhere or in CI; the LiteSVM suite in
+  `tests/litesvm` then runs against the real DAMM v2 binary.
+- **A devnet deployment and live end-to-end run** need a funded devnet keypair, which comes from
+  `https://faucet.solana.com`; `ops:devnet-e2e` then runs the whole flow.
+- **The DLMM pair PDA derivation** for `createLbPair2` should be confirmed on devnet (see
+  [INTEGRATIONS.md](INTEGRATIONS.md)).

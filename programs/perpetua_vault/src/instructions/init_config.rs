@@ -19,6 +19,7 @@ pub fn handle_init_config(ctx: Context<InitConfig>, protocol_fee_bps: u16) -> Re
     config.treasury = ctx.accounts.admin.key();
     config.protocol_fee_bps = protocol_fee_bps;
     config.bump = ctx.bumps.config;
+    config.paused_entry = false;
 
     emit!(ConfigInitialized {
         admin: config.admin,

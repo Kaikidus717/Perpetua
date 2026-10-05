@@ -47,8 +47,9 @@ Pitch: *cash-flow tokens — a new asset class on Meteora's liquidity layer.*
 
 ```
 packages/shared      types, program ids, zod schemas
-packages/valuation   decay model, scenarios, risk flags, backtest
-packages/sdk         on-chain client, ladder + preset builders, ports
+packages/valuation   decay model, scenarios, risk flags, sessions, compounding, backtest
+packages/sdk         on-chain client, ladder + preset + bid builders, ports
+packages/stock-kit   closed-market fee curve, anchored start price
 apps/api             Hono REST + SSE over a Store (in-memory or Drizzle/Postgres)
 apps/indexer         Meteora data API client, Anchor event decoding, vault ingestion
 apps/keeper          crank_claim bot
@@ -85,7 +86,7 @@ pnpm --filter @perpetua/api db:generate
 `programs/perpetua_vault` — Anchor 0.31+/0.32. Program id:
 
 ```
-3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit
+G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2
 ```
 
 Instructions: `init_config`, `create_vault`, `crank_claim`, `stake`, `unstake`, `unstake_no_claim`,
@@ -118,6 +119,7 @@ Everything below is verified by running it, not by inspection.
 | `@perpetua/shared`, `@perpetua/valuation`, `@perpetua/sdk` | built + unit tested |
 | `@perpetua/api`, `@perpetua/indexer`, `@perpetua/keeper` | built + unit tested; API serves every route at runtime |
 | `@perpetua/web` | `next build` green, 7 routes; the securitize and vault pages sign with a connected wallet |
+| `@perpetua/mcp` | MCP server for other AI agents; 30 tests including a real MCP `Client` over the in-memory transport |
 | Meteora SDKs | `@meteora-ag/cp-amm-sdk`, `@meteora-ag/dlmm`, `@meteora-ag/dynamic-bonding-curve-sdk` wired through real adapters |
 | LiteSVM suite | in `tests/litesvm`; builds the program artifact when `cargo build-sbf` is available and skips cleanly otherwise |
 
@@ -128,12 +130,24 @@ program IDs on every cluster, so the flow runs without real funds. See
 ```bash
 pnpm --filter @perpetua/sdk ops:extract-idls      # dump the Meteora IDLs we build against
 pnpm --filter @perpetua/sdk ops:verify-offsets    # check our byte offsets against live positions
+pnpm ops:faucet -- --dry-run                      # how much devnet SOL the deploy still needs
 KEYPAIR=~/.config/solana/devnet.json pnpm --filter @perpetua/sdk ops:devnet-e2e
+```
+
+## MCP
+
+`@perpetua/mcp` exposes Perpetua to other AI agents as an MCP server, so they can price positions,
+read Report Cards and build unsigned transactions without bespoke glue. See
+[packages/mcp/README.md](packages/mcp/README.md).
+
+```bash
+PERPETUA_API_URL=http://localhost:8787 pnpm mcp
 ```
 
 ## Docs
 
 - [docs/DEVNET.md](docs/DEVNET.md) — the devnet path, start here
+- [packages/mcp/README.md](packages/mcp/README.md) — the MCP server for other agents
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/VALUATION.md](docs/VALUATION.md)
 - [docs/SECURITY.md](docs/SECURITY.md)

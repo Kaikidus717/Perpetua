@@ -22,6 +22,15 @@ anchor-debug = []
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
 anchor-spl = "0.32.1"
 
+# `solana-program-entrypoint`'s macros expand `cfg(feature = "...")` guards for features declared in
+# its own manifest, so rustc's check-cfg lint fires inside this crate. Declaring the values is the
+# sanctioned fix and keeps `cargo clippy -- -D warnings` (CI) green.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(feature, values("custom-heap", "custom-panic"))',
+  'cfg(target_os, values("solana"))',
+] }
+
 # LiteSVM integration tests live in the `perpetua_vault_litesvm` crate (tests/litesvm) so that
 # `cargo test -p perpetua_vault` only builds the pure unit tests.
 

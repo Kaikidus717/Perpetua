@@ -38,6 +38,10 @@
       "types": "./dist/sale/bins.d.ts",
       "default": "./dist/sale/bins.js"
     },
+    "./bids": {
+      "types": "./dist/sale/bids.d.ts",
+      "default": "./dist/sale/bids.js"
+    },
     "./adapters/damm-v2": {
       "types": "./dist/adapters/dammV2.d.ts",
       "default": "./dist/adapters/dammV2.js"

@@ -21,8 +21,10 @@ pub struct Vault {
     pub creator: Pubkey,
     pub created_at: i64,
     pub bump: u8,
+    /// Bitmask of `FLAG_*` constants in `constants.rs`.
+    pub risk_flags: u32,
 }
 
 impl Vault {
-    pub const LEN: usize = 8 + (32 * 9) + 8 + 16 + 16 + (8 * 6) + 32 + 8 + 1;
+    pub const LEN: usize = 8 + (32 * 9) + 8 + 16 + 16 + (8 * 6) + 32 + 8 + 1 + 4;
 }

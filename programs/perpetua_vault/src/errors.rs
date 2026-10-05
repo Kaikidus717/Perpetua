@@ -20,4 +20,8 @@ pub enum PerpetuaError {
     MathOverflow,
     #[msg("pool does not match the vault")]
     InvalidPool,
+    #[msg("entry is paused by the admin")]
+    EntryPaused,
+    #[msg("fee mint carries a TransferHook extension")]
+    TransferHookMint,
 }

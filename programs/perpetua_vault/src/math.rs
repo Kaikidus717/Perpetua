@@ -111,6 +111,7 @@ mod tests {
             creator: Pubkey::default(),
             created_at: 0,
             bump: 0,
+            risk_flags: 0,
         }
     }
 

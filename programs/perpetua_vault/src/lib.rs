@@ -4,6 +4,7 @@ pub mod constants;
 pub mod cpi;
 pub mod errors;
 pub mod events;
+pub mod extensions;
 pub mod instructions;
 pub mod math;
 pub mod state;
@@ -12,7 +13,7 @@ pub mod state;
 // accounts struct, but `#[program]` resolves them at the crate root, so re-export the lot.
 pub use instructions::*;
 
-declare_id!("3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit");
+declare_id!("G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2");
 
 #[program]
 pub mod perpetua_vault {
@@ -44,5 +45,13 @@ pub mod perpetua_vault {
 
     pub fn harvest(ctx: Context<Harvest>) -> Result<()> {
         handle_harvest(ctx)
+    }
+
+    pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+        handle_set_paused(ctx, paused)
+    }
+
+    pub fn set_risk_flags(ctx: Context<SetRiskFlags>, flags: u32) -> Result<()> {
+        handle_set_risk_flags(ctx, flags)
     }
 }

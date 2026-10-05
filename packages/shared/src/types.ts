@@ -62,6 +62,9 @@ export interface ScenarioValuation {
 }
 
 export interface ValuationResult {
+  /// Pinned so a published number can be reproduced later.
+  modelVersion: string;
+  inputsHash: string;
   pool: string;
   fairValueUsd: number;
   fairValueRangeUsd: { low: number; base: number; high: number };

@@ -12,7 +12,7 @@ Program ids used across the repo:
 | DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` |
 | DBC | `dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN` |
 | Dynamic Fee Sharing | `dfsdo2UqvwfN8DuUVrMRNfQe11VaiNoKcMqLHVvDPzh` |
-| `perpetua_vault` | `3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit` |
+| `perpetua_vault` | `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2` |
 
 ## Where Perpetua touches Meteora
 

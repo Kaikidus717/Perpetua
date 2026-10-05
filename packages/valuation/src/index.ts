@@ -6,10 +6,17 @@ import {
   type ValuationInput,
   type ValuationResult,
 } from "@perpetua/shared";
+import { blendDecay, cohortPriorFor } from "./cohortPrior.js";
 import { estimateDecay, impliedApr, paybackDays, presentValue, projectFees } from "./model.js";
 import { computeRiskFlags } from "./risk.js";
 import { buildScenarios } from "./scenarios.js";
 import type { ValuationConfig } from "./types.js";
+import { MODEL_VERSION, inputsHash } from "./version.js";
+
+export * from "./compounding.js";
+export * from "./cohortPrior.js";
+export * from "./session.js";
+export * from "./version.js";
 
 const FEE_FLOOR_FRACTION = 0.02;
 const WHOLE_TOKENS = Number(SHARE_SUPPLY / 10n ** BigInt(SHARE_DECIMALS));
@@ -28,10 +35,13 @@ export function valuePosition(input: ValuationInput): ValuationResult {
   const config = resolveConfig(input);
   const { feesUsd } = input.series;
   const fit = estimateDecay(feesUsd);
+  // Young pools get pulled toward a cohort prior so a short, hype-driven series cannot
+  // overstate the stream.
+  const lambda = blendDecay(fit.lambda, cohortPriorFor(input.risk.poolAgeDays));
   const lastFee = feesUsd.at(-1) ?? 0;
   const floorUsd = Math.max(lastFee * FEE_FLOOR_FRACTION, 1e-6);
 
-  const scenarios = buildScenarios(fit.lambda);
+  const scenarios = buildScenarios(lambda);
   const valuations: ScenarioValuation[] = scenarios.map((scenario) => {
     const projected = projectFees({
       lastFeeUsd: lastFee * scenario.volumeMultiplier,
@@ -61,12 +71,14 @@ export function valuePosition(input: ValuationInput): ValuationResult {
 
   const annualFeesUsd = projectFees({
     lastFeeUsd: lastFee,
-    lambda: fit.lambda,
+    lambda,
     horizonDays: 365,
     floorUsd,
   }).reduce((sum, fee) => sum + fee, 0);
 
   return {
+    modelVersion: MODEL_VERSION,
+    inputsHash: inputsHash(input),
     pool: input.pool,
     fairValueUsd: base.presentValueUsd,
     fairValueRangeUsd: {

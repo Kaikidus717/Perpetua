@@ -30,20 +30,22 @@ pub fn settle<'info>(stake: &mut Account<'info, Stake>, vault: &Account<'info, V
     Ok(())
 }
 
+/// The token accounts are boxed: the SBF runtime caps a stack frame at 4096 bytes, and six
+/// deserialized token/mint structs on the stack blow that budget on their own.
 pub struct ClaimAccounts<'info> {
     pub pool_authority: AccountInfo<'info>,
     pub pool: AccountInfo<'info>,
     pub position: AccountInfo<'info>,
     pub position_nft_account: AccountInfo<'info>,
-    pub token_a_mint: InterfaceAccount<'info, Mint>,
-    pub token_b_mint: InterfaceAccount<'info, Mint>,
+    pub token_a_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub token_b_mint: Box<InterfaceAccount<'info, Mint>>,
     pub token_a_vault: AccountInfo<'info>,
     pub token_b_vault: AccountInfo<'info>,
     pub event_authority: AccountInfo<'info>,
-    pub vault_a_account: InterfaceAccount<'info, TokenAccount>,
-    pub vault_b_account: InterfaceAccount<'info, TokenAccount>,
-    pub treasury_a_account: InterfaceAccount<'info, TokenAccount>,
-    pub treasury_b_account: InterfaceAccount<'info, TokenAccount>,
+    pub vault_a_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub vault_b_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub treasury_a_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub treasury_b_account: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_a_program: AccountInfo<'info>,
     pub token_b_program: AccountInfo<'info>,
     pub cp_amm_program: AccountInfo<'info>,

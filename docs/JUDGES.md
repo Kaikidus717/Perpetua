@@ -51,6 +51,10 @@ anchor test                                             # LiteSVM suite (needs f
 Invariants under test are listed in [SECURITY.md](SECURITY.md): fee conservation, no-liquidity-change,
 the JIT-staking attack, fixed supply, zero-fee no-op and paused-mint exits.
 
+`cargo test -p perpetua_vault` runs 13 unit tests: 7 on the fee-per-share accrual and 6 on the
+Token-2022 extension parser, including a truncated TLV entry. `cargo test -p perpetua_vault_litesvm`
+then loads the compiled binary into LiteSVM and asserts it is a valid, executable program.
+
 ## 5. KPI page
 
 `/kpi` shows vaults, positions securitized, fees distributed, unique stakers and DLMM volume, all
@@ -66,15 +70,59 @@ Real and running:
 - **The Meteora SDKs are wired**, not stubbed: `DammV2Adapter` reads positions and lock buckets and
   derives the full `claim_position_fee` account set from pool state; `DlmmAdapter` builds the
   permissionless pair and the one-sided ask ladder; `DbcAdapter` builds the financeable config.
-- **The program compiles and its logic is tested**: `cargo test -p perpetua_vault` → 7/7.
+- **The program compiles for SBPF and its logic is tested.** `anchor build --no-idl` exits 0 and
+  writes `target/deploy/perpetua_vault.so` (438,688 bytes, valid ELF, no stack-frame overflows).
+  `cargo test -p perpetua_vault` → 13/13 and `cargo clippy -p perpetua_vault -- -D warnings` is clean.
+- **Building and running the program found four real bugs**, none of which were visible from reading
+  the source:
+
+  1. **Stack-frame overflow.** The first SBPF build reported four
+     `overflows the maximum allowed frame space` errors on `stake` and `unstake`
+     (`StakeContext::try_accounts` at 5440 bytes against a 4096-byte limit). The program would not
+     have run on-chain. Boxing the deserialized `Vault`, `Stake`, mint and token accounts fixed it.
+  2. **`create_vault` could never succeed.** It minted the share supply into the creator's
+     associated token account, but the share mint is created by that same instruction — so the
+     account could not exist yet and `mint_to` had nothing to mint into. The program now creates the
+     ATA itself (`init` + `associated_token::*` constraints), which is what `associated_token_program`
+     was in the account list for.
+  3. **`create_vault` permanently bricked the position NFT.** `set_authority_data` wrote the
+     `COption<Pubkey>` tag as **four** bytes. SPL Token's instruction-data form uses **one**
+     (`Pack::LEN == 1 + 32`), so the token program read the tag and then took `0x000000 || authority[0..29]`
+     as the new owner — an address nobody can ever sign for. The position would have been
+     unrecoverable and the whole fee flow dead. Caught by `crank_claim → harvest` failing against the
+     real token program; pinned by a byte-exact unit test in `cpi.rs`.
+  4. **The cp-amm program address was never pinned.** The `claim_position_fee` CPI runs
+     `invoke_signed` with the vault PDA over the vault's own fee token accounts, so a caller could
+     have substituted a program that simply transfers those balances away. `CP_AMM_PROGRAM_ID` is now
+     asserted on every account struct that receives it, and a test proves the substitution is
+     rejected.
+- **The upgrade pack is real code, not prose.** `set_paused` gates entry only — exits are never
+  gated. `create_vault` walks the fee mints' Token-2022 extensions and refuses a `TransferHook`
+  mint, recording pausable / permanent-delegate / transfer-fee mints in `Vault.risk_flags`.
+- **The valuation engine has session and compounding analytics**: `session.ts` classifies any
+  instant into a pre/regular/post/overnight/closed equity session, `compounding.ts` separates the
+  claimable floor from the growth-adjusted upside, and every result carries a `modelVersion` and an
+  `inputsHash`.
+- **`@perpetua/stock-kit`** schedules the closed-market fee curve (a cliff that decays to the base
+  fee as the reference reopens) and the anchored start price.
+- **`sale/bids.ts`** scores conviction bids as `size × time in pool × depth below fair value` and
+  builds the ask/bid depth chart.
 - **The position-lock offsets are verified against live on-chain accounts**, not assumed:
   `pnpm --filter @perpetua/sdk ops:verify-offsets`.
 
 Left, stated plainly:
 
-- **`cargo build-sbf`** needs the Solana platform tools, which download from GitHub releases. On a
-  network that cannot reach GitHub, build the `.so` elsewhere or in CI; the LiteSVM suite in
-  `tests/litesvm` then runs against the real DAMM v2 binary.
+- **`cargo build-sbf`** needs the Solana platform tools — a 531 MB download from GitHub releases.
+  On a slow network, fetch it in 16 MB range chunks in parallel (GitHub throttles a single long-lived
+  connection); `scripts/out/pt-all.sh` does exactly that and stages the tarball outside the Solana
+  cache so the toolchain installer cannot reclaim it.
+- **The fee flow runs against a mock DAMM v2, not the real binary.** `tests/litesvm/tests/flow.rs`
+  drives `init_config → create_vault → crank_claim → harvest` against the compiled program with the
+  real SPL token program and real PDA signing, but the cp-amm callee is `tests/mock-cp-amm`. The
+  mock reproduces the one behaviour the vault depends on — the fee delta arriving in the vault's
+  token accounts — and nothing else, so DAMM v2's own pool validation and fee arithmetic are out of
+  scope here. `scripts/fetch-programs.sh` dumps the real `cp_amm.so`; pointing the harness at it is a
+  one-line change in `tests/litesvm/src/lib.rs`.
 - **A devnet deployment and live end-to-end run** need a funded devnet keypair, which comes from
   `https://faucet.solana.com`; `ops:devnet-e2e` then runs the whole flow.
 - **The DLMM pair PDA derivation** for `createLbPair2` should be confirmed on devnet (see

@@ -10,9 +10,14 @@
 use std::path::{Path, PathBuf};
 
 use litesvm::LiteSVM;
-use solana_sdk::pubkey::Pubkey;
+use solana_address::Address;
 
-const PROGRAM_ID: &str = "3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit";
+const UPGRADEABLE_LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
+
+/// Read from the program crate, so the harness can never disagree with `declare_id!`.
+fn program_id() -> Address {
+    Address::new_from_array(perpetua_vault::ID.to_bytes())
+}
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -35,13 +40,16 @@ fn boots_the_vault_program() {
     };
 
     let mut svm = LiteSVM::new();
-    let program_id: Pubkey = PROGRAM_ID.parse().expect("valid program id");
+    let program_id = program_id();
     svm.add_program_from_file(program_id, &so)
         .expect("program loads into litesvm");
 
     let account = svm
         .get_account(&program_id)
         .expect("program account exists after loading");
-    assert_eq!(account.owner, solana_sdk::bpf_loader_upgradeable::id());
+    assert_eq!(
+        account.owner,
+        UPGRADEABLE_LOADER.parse::<Address>().expect("valid loader id")
+    );
     assert!(account.executable);
 }

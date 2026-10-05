@@ -1,5 +1,5 @@
 export const PERPETUA_VAULT_IDL = {
-  "address": "3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit",
+  "address": "G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2",
   "metadata": {
     "name": "perpetua_vault",
     "version": "0.1.0",
@@ -475,6 +475,67 @@ export const PERPETUA_VAULT_IDL = {
       ]
     },
     {
+      "name": "setPaused",
+      "discriminator": [
+        91,
+        60,
+        125,
+        192,
+        176,
+        225,
+        166,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "setRiskFlags",
+      "discriminator": [
+        139,
+        4,
+        8,
+        39,
+        214,
+        108,
+        62,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "vault",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "flags",
+          "type": "u32"
+        }
+      ]
+    },
+    {
       "name": "harvest",
       "discriminator": [
         228,
@@ -651,6 +712,32 @@ export const PERPETUA_VAULT_IDL = {
         149,
         11
       ]
+    },
+    {
+      "name": "RiskFlagsSet",
+      "discriminator": [
+        235,
+        160,
+        190,
+        118,
+        180,
+        63,
+        115,
+        46
+      ]
+    },
+    {
+      "name": "EntryPaused",
+      "discriminator": [
+        61,
+        206,
+        60,
+        65,
+        28,
+        16,
+        12,
+        20
+      ]
     }
   ],
   "errors": [
@@ -698,6 +785,16 @@ export const PERPETUA_VAULT_IDL = {
       "code": 6008,
       "name": "InvalidPool",
       "msg": "pool does not match the vault"
+    },
+    {
+      "code": 6009,
+      "name": "EntryPaused",
+      "msg": "entry is paused by the admin"
+    },
+    {
+      "code": 6010,
+      "name": "TransferHookMint",
+      "msg": "fee mint carries a TransferHook extension"
     }
   ],
   "types": [
@@ -721,6 +818,10 @@ export const PERPETUA_VAULT_IDL = {
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "pausedEntry",
+            "type": "bool"
           }
         ]
       }
@@ -805,6 +906,10 @@ export const PERPETUA_VAULT_IDL = {
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "riskFlags",
+            "type": "u32"
           }
         ]
       }
@@ -977,6 +1082,34 @@ export const PERPETUA_VAULT_IDL = {
           {
             "name": "amountB",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RiskFlagsSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "flags",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EntryPaused",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "paused",
+            "type": "bool"
           }
         ]
       }

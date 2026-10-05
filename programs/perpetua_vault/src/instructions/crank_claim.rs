@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::constants::CP_AMM_POOL_AUTHORITY;
+use crate::constants::{CP_AMM_POOL_AUTHORITY, CP_AMM_PROGRAM_ID};
 use crate::errors::PerpetuaError;
 use crate::events::FeesClaimed;
 use crate::instructions::touch::{touch, ClaimAccounts};
@@ -45,7 +45,8 @@ pub struct CrankClaim<'info> {
     pub treasury_b_account: InterfaceAccount<'info, TokenAccount>,
     pub token_a_program: Interface<'info, TokenInterface>,
     pub token_b_program: Interface<'info, TokenInterface>,
-    /// CHECK: DAMM v2 program.
+    /// CHECK: pinned to the DAMM v2 program; see `CP_AMM_PROGRAM_ID`.
+    #[account(address = CP_AMM_PROGRAM_ID)]
     pub cp_amm_program: UncheckedAccount<'info>,
 }
 
@@ -67,15 +68,15 @@ pub fn handle_crank_claim(ctx: Context<CrankClaim>) -> Result<()> {
             pool: ctx.accounts.pool.to_account_info(),
             position: ctx.accounts.position.to_account_info(),
             position_nft_account: ctx.accounts.position_nft_account.to_account_info(),
-            token_a_mint: ctx.accounts.token_a_mint.clone(),
-            token_b_mint: ctx.accounts.token_b_mint.clone(),
+            token_a_mint: Box::new(ctx.accounts.token_a_mint.clone()),
+            token_b_mint: Box::new(ctx.accounts.token_b_mint.clone()),
             token_a_vault: ctx.accounts.token_a_vault.to_account_info(),
             token_b_vault: ctx.accounts.token_b_vault.to_account_info(),
             event_authority: ctx.accounts.event_authority.to_account_info(),
-            vault_a_account: ctx.accounts.vault_a_account.clone(),
-            vault_b_account: ctx.accounts.vault_b_account.clone(),
-            treasury_a_account: ctx.accounts.treasury_a_account.clone(),
-            treasury_b_account: ctx.accounts.treasury_b_account.clone(),
+            vault_a_account: Box::new(ctx.accounts.vault_a_account.clone()),
+            vault_b_account: Box::new(ctx.accounts.vault_b_account.clone()),
+            treasury_a_account: Box::new(ctx.accounts.treasury_a_account.clone()),
+            treasury_b_account: Box::new(ctx.accounts.treasury_b_account.clone()),
             token_a_program: ctx.accounts.token_a_program.to_account_info(),
             token_b_program: ctx.accounts.token_b_program.to_account_info(),
             cp_amm_program: ctx.accounts.cp_amm_program.to_account_info(),

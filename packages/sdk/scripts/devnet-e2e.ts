@@ -128,19 +128,15 @@ async function main(): Promise<void> {
     collectFeeMode: CollectFeeMode.BothToken,
   });
   const poolFees: PoolFeesParams = {
-    baseFee: getBaseFeeParams(
-      {
-        baseFeeMode: BaseFeeMode.FeeTimeSchedulerExponential,
-        feeTimeSchedulerParam: {
-          startingFeeBps: 100,
-          endingFeeBps: 25,
-          numberOfPeriod: 60,
-          totalDuration: 3600,
-        },
+    baseFee: getBaseFeeParams({
+      baseFeeMode: BaseFeeMode.FeeTimeSchedulerExponential,
+      feeTimeSchedulerParam: {
+        startingFeeBps: 100,
+        endingFeeBps: 25,
+        numberOfPeriod: 60,
+        totalDuration: 3600,
       },
-      6,
-      ActivationType.Timestamp,
-    ),
+    }),
     compoundingFeeBps: 0,
     padding: 0,
     dynamicFee: getDynamicFeeParams(25),

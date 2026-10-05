@@ -49,7 +49,7 @@ async function fund(connection: Connection, payer: Keypair): Promise<void> {
 
 async function createMint(connection: Connection, payer: Keypair): Promise<PublicKey> {
   const mint = Keypair.generate();
-  const rent = await connection.getMinimumBalanceForRentExemptMint(connection);
+  const rent = await getMinimumBalanceForRentExemptMint(connection);
   const transaction = new Transaction().add(
     SystemProgram.createAccount({
       fromPubkey: payer.publicKey,
@@ -112,19 +112,15 @@ export async function createDevnetLockedPosition(
     collectFeeMode: CollectFeeMode.BothToken,
   });
   const poolFees: PoolFeesParams = {
-    baseFee: getBaseFeeParams(
-      {
-        baseFeeMode: BaseFeeMode.FeeTimeSchedulerExponential,
-        feeTimeSchedulerParam: {
-          startingFeeBps: 100,
-          endingFeeBps: 25,
-          numberOfPeriod: 60,
-          totalDuration: 3600,
-        },
+    baseFee: getBaseFeeParams({
+      baseFeeMode: BaseFeeMode.FeeTimeSchedulerExponential,
+      feeTimeSchedulerParam: {
+        startingFeeBps: 100,
+        endingFeeBps: 25,
+        numberOfPeriod: 60,
+        totalDuration: 3600,
       },
-      6,
-      ActivationType.Timestamp,
-    ),
+    }),
     compoundingFeeBps: 0,
     padding: 0,
     dynamicFee: getDynamicFeeParams(25),

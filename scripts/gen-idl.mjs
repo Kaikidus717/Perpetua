@@ -3,9 +3,13 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertConsistent } from "./program-id.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
-const PROGRAM_ID = "3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit";
+// Read from `declare_id!` and fail loudly if Anchor.toml drifted, so the IDL can never publish an
+// address the program does not actually answer to.
+const PROGRAM_ID = assertConsistent();
 const VERSION = "0.1.0";
 
 const disc = (prefix, name) =>
@@ -13,6 +17,7 @@ const disc = (prefix, name) =>
 
 const u8 = "u8";
 const u16 = "u16";
+const u32 = "u32";
 const u64 = "u64";
 const u128 = "u128";
 const i64 = "i64";
@@ -26,6 +31,7 @@ const ACCOUNTS = [
     { name: "treasury", type: pubkey },
     { name: "protocol_fee_bps", type: u16 },
     { name: "bump", type: u8 },
+    { name: "paused_entry", type: "bool" },
   ]),
   struct("Vault", [
     { name: "pool", type: pubkey },
@@ -47,6 +53,7 @@ const ACCOUNTS = [
     { name: "creator", type: pubkey },
     { name: "created_at", type: i64 },
     { name: "bump", type: u8 },
+    { name: "risk_flags", type: u32 },
   ]),
   struct("Stake", [
     { name: "vault", type: pubkey },
@@ -94,6 +101,11 @@ const EVENTS = [
     { name: "amount_a", type: u64 },
     { name: "amount_b", type: u64 },
   ]),
+  struct("RiskFlagsSet", [
+    { name: "vault", type: pubkey },
+    { name: "flags", type: u32 },
+  ]),
+  struct("EntryPaused", [{ name: "paused", type: "bool" }]),
 ];
 
 const acc = (name, flags = {}) => ({ name, ...flags });
@@ -197,6 +209,16 @@ const INSTRUCTIONS = [
     accounts: [sg("owner", { writable: true }), wr("vault"), wr("stake"), ...shareAccounts],
   },
   {
+    name: "set_paused",
+    args: [{ name: "paused", type: "bool" }],
+    accounts: [sg("admin"), wr("config")],
+  },
+  {
+    name: "set_risk_flags",
+    args: [{ name: "flags", type: u32 }],
+    accounts: [sg("admin"), ro("config"), wr("vault")],
+  },
+  {
     name: "harvest",
     args: [],
     accounts: [
@@ -225,6 +247,8 @@ const ERRORS = [
   { code: 6006, name: "WrongShareMint", msg: "share mint does not match the vault" },
   { code: 6007, name: "MathOverflow", msg: "arithmetic overflow" },
   { code: 6008, name: "InvalidPool", msg: "pool does not match the vault" },
+  { code: 6009, name: "EntryPaused", msg: "entry is paused by the admin" },
+  { code: 6010, name: "TransferHookMint", msg: "fee mint carries a TransferHook extension" },
 ];
 
 const toCamel = (value) => value.replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase());

@@ -15,7 +15,13 @@
     "typecheck": "turbo run typecheck",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "program:check": "node scripts/program-id.mjs check",
+    "program:sync": "node scripts/program-id.mjs sync",
+    "program:keypair": "node scripts/program-id.mjs install-keypair",
+    "ops:faucet": "node scripts/faucet.mjs",
+    "mcp": "pnpm --filter @perpetua/mcp start",
+    "idl": "node scripts/gen-idl.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

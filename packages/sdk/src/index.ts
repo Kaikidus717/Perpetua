@@ -7,6 +7,7 @@ export * from "./vault/types.js";
 export * from "./vault/client.js";
 export * from "./data/staticDataApi.js";
 export * from "./sale/bins.js";
+export * from "./sale/bids.js";
 export * from "./ports.js";
 export * from "./adapters/dammV2.js";
 export * from "./adapters/dlmm.js";

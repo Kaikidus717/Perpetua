@@ -44,3 +44,14 @@ pub struct Harvested {
     pub amount_a: u64,
     pub amount_b: u64,
 }
+
+#[event]
+pub struct RiskFlagsSet {
+    pub vault: Pubkey,
+    pub flags: u32,
+}
+
+#[event]
+pub struct EntryPaused {
+    pub paused: bool,
+}

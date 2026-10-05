@@ -28,6 +28,67 @@ vault PDA owns the NFT account, and the fee stream can only be claimed and split
 6. Token-2022 fee mints keep balance-diff accounting exact.
 7. `unstake_no_claim` still works when a fee mint is paused or blocked.
 
+## Pause switch and risk flags (upgrade pack 6A)
+
+`Config.paused_entry` pauses **only** `create_vault` and `stake`. `unstake`, `unstake_no_claim`,
+`harvest` and `crank_claim` can never be paused, so holders can always exit and always pull what they
+are owed even if the admin key is compromised or the admin disappears.
+
+`Vault.risk_flags` is a `u32` bitmask, set at `create_vault` from the fee mints' Token-2022
+extensions and re-settable by the admin as the pool ages:
+
+| Flag | Bit | Trigger |
+|---|---|---|
+| `COMPOUNDING_MODE` | 1<<0 | the pool's fee mode reinvests part of the fee |
+| `PAUSABLE_MINT` | 1<<1 | `DefaultAccountState` extension (accounts can start frozen) |
+| `PERMANENT_DELEGATE_MINT` | 1<<2 | `PermanentDelegate` extension |
+| `TRANSFER_FEE_MINT` | 1<<3 | `TransferFeeConfig` extension |
+| `YOUNG_POOL` | 1<<4 | pool age under 7 days |
+| `LOW_LIQUIDITY` | 1<<5 | pool liquidity below the configured floor |
+
+`create_vault` **refuses** a fee mint carrying a `TransferHook` extension. Pausable and
+permanent-delegate mints are accepted but flagged, and the valuation engine discounts the stream
+rather than pretending the risk is not there.
+
+The extension walk lives in `programs/perpetua_vault/src/extensions.rs` and is unit tested against
+synthetic TLV buffers, including a truncated entry (the parser stops rather than trusting a partial
+payload). VERIFY the extension type ids against the SPL Token-2022 registry before mainnet.
+
+## Threat model
+
+| Threat | Mitigation |
+|---|---|
+| **JIT sandwich** — stake immediately before a claim, unstake right after | `stake` and `unstake` claim **before** touching accounting, in the same transaction, so a fresh staker cannot capture fees that already existed |
+| **Fake position substitution** — hand the vault someone else's position | the vault is keyed by the position address (`["vault", position]`) and `has_one = pool` pins the pool on every fee-touching instruction |
+| **Bricked claims** — a paused or blocked fee mint stops distributions | `unstake_no_claim` exits without the claim CPI; fees stay in the position and are credited at the next successful touch |
+| **Rounding** — repeated small claims drain more than they should | user claims floor, dust stays in the vault, and the conservation invariant bounds the leakage |
+| **Carry capture** — the first staker skims fees earned while nobody was staked | disclosed in the docs; optional dust-stake seed at creation to neutralise it |
+| **Admin abuse** — the admin pauses exits or reaches the principal | the pause cannot touch `unstake`/`harvest`/`crank_claim`; there is no instruction that moves the NFT or the principal |
+| **Dust griefing** — tiny stakes force a crank or bloat accounting | minimum stake amount; carry is released only when a real stake exists |
+| **Ladder front-running** — someone buys ahead of the sale seeding | the ladder is seeded in one transaction; the primary sale mode is ask-side limit orders |
+
+## Known limitations
+
+These are honest gaps, not oversights, and each one is recorded where a reviewer will look for it:
+
+- **`init_config` wires `treasury` to `admin`.** There is no treasury argument, so the two cannot be
+  separated later without re-initialising `Config`. Deliberate for a single-operator launch; a
+  multi-sig treasury wants a separate `set_treasury` before this handles real value.
+- **`crank_claim` and `harvest` are permissionless-ish but untested under adversarial ordering.**
+  The integration suite covers the happy path and the accounting; it does not yet fuzz interleavings
+  of stake/unstake/claim within one slot beyond the JIT case in the unit tests.
+- **The LiteSVM suite uses a mock DAMM v2.** It proves the vault's own accounting and PDA signing
+  against the real SPL token program, but not DAMM v2's pool validation. A fork test with the real
+  `cp_amm.so` (`scripts/fetch-programs.sh`) is the next step, not a claim made here.
+
+## Incident runbook
+
+1. **Pause entry** with `set_paused(true)`. Exits stay open by construction.
+2. **Publish** the transaction, the affected vault list and the exposure on `/status`.
+3. If a fee mint blocks claims, **direct holders to `unstake_no_claim`** and say why.
+4. If the vulnerability is in the program itself, **rotate the upgrade authority**; if it is already
+   revoked, ship a new program and publish a migration path.
+
 ## Operational plan
 
 - **Verifiable build** (`solana-verify`) and public transaction links for every securitized position.

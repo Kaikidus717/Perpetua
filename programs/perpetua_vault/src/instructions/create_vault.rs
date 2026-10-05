@@ -1,10 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::{self, Mint, MintTo, Token};
+use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount};
 
-use crate::constants::{SHARE_DECIMALS, SHARE_SUPPLY, VAULT_SEED};
+use crate::constants::{CP_AMM_PROGRAM_ID, SHARE_DECIMALS, SHARE_SUPPLY, VAULT_SEED};
 use crate::cpi;
 use crate::errors::PerpetuaError;
+use crate::extensions;
 use crate::events::VaultCreated;
 use crate::state::{Config, Vault};
 
@@ -43,24 +44,45 @@ pub struct CreateVault<'info> {
     pub vault: Account<'info, Vault>,
     #[account(init, payer = creator, mint::decimals = SHARE_DECIMALS, mint::authority = creator)]
     pub share_mint: Account<'info, Mint>,
-    /// CHECK: recipient of the full share supply (creator ATA for the share mint).
-    #[account(mut)]
-    pub creator_share_account: UncheckedAccount<'info>,
+    /// Recipient of the full share supply. The share mint is created by this same instruction, so
+    /// its associated token account cannot already exist — the program creates it here. Without
+    /// this the `mint_to` below would always fail: there would be nothing to mint into.
+    #[account(
+        init,
+        payer = creator,
+        associated_token::mint = share_mint,
+        associated_token::authority = creator,
+    )]
+    pub creator_share_account: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
-    /// CHECK: DAMM v2 program used for the `claim_position_fee` CPI at crank time.
+    /// CHECK: pinned to the DAMM v2 program; see `CP_AMM_PROGRAM_ID`.
+    #[account(address = CP_AMM_PROGRAM_ID)]
     pub cp_amm_program: UncheckedAccount<'info>,
     pub rent: Sysvar<'info, Rent>,
 }
 
 pub fn handle_create_vault(ctx: Context<CreateVault>) -> Result<()> {
+    require!(!ctx.accounts.config.paused_entry, PerpetuaError::EntryPaused);
+
     let lock = cpi::parse_position_lock(&ctx.accounts.position.data.borrow())?;
     require!(
         lock.unlocked == 0 && lock.vested == 0,
         PerpetuaError::PositionNotFullyLocked
     );
     require!(lock.permanent_locked > 0, PerpetuaError::NoPermanentLock);
+
+    // Spike S9: read the fee mints' Token-2022 extensions. A TransferHook mint is refused
+    // outright; pausable, permanent-delegate and transfer-fee mints are allowed but flagged
+    // so the valuation engine discounts the stream.
+    let ext_a = extensions::parse_mint_extensions(&ctx.accounts.token_a_mint.data.borrow());
+    let ext_b = extensions::parse_mint_extensions(&ctx.accounts.token_b_mint.data.borrow());
+    require!(
+        !ext_a.has_transfer_hook && !ext_b.has_transfer_hook,
+        PerpetuaError::TransferHookMint
+    );
+    let risk_flags = ext_a.risk_flags() | ext_b.risk_flags();
 
     require_keys_eq!(
         ctx.accounts.position_nft_program.key(),
@@ -98,6 +120,7 @@ pub fn handle_create_vault(ctx: Context<CreateVault>) -> Result<()> {
         vault.creator = ctx.accounts.creator.key();
         vault.created_at = created_at;
         vault.bump = ctx.bumps.vault;
+        vault.risk_flags = risk_flags;
     }
 
     mint_full_supply(&ctx)?;

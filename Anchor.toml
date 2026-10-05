@@ -5,13 +5,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-perpetua_vault = "3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit"
+perpetua_vault = "G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2"
 
 [programs.devnet]
-perpetua_vault = "3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit"
+perpetua_vault = "G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2"
 
 [programs.mainnet]
-perpetua_vault = "3QoX6JPhvcNpHbvdNsumQShrfUu7bx4YpkLKoGtdvHit"
+perpetua_vault = "G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2"
 
 [registry]
 url = "https://api.apr.dev"

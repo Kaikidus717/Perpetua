@@ -170,7 +170,6 @@ const INSTRUCTIONS = [
       ro("associated_token_program"),
       ro("system_program"),
       ro("cp_amm_program"),
-      ro("rent"),
     ],
   },
   {

@@ -206,6 +206,8 @@ export async function buildHarvest(
     owner,
     vault: refs.vault,
     stake,
+    tokenAMint: refs.account.tokenAMint,
+    tokenBMint: refs.account.tokenBMint,
     vaultAAccount: refs.claim.vaultAAccount,
     vaultBAccount: refs.claim.vaultBAccount,
     ownerAAccount: getAssociatedTokenAddressSync(

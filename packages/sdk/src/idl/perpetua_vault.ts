@@ -113,9 +113,6 @@ export const PERPETUA_VAULT_IDL = {
         },
         {
           "name": "cpAmmProgram"
-        },
-        {
-          "name": "rent"
         }
       ],
       "args": []

@@ -161,7 +161,6 @@ impl World {
                 readonly(addr("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"), false),
                 readonly(addr(SYSTEM_PROGRAM), false),
                 readonly(cp_amm, false),
-                readonly(addr("SysvarRent111111111111111111111111111111111"), false),
             ],
             data: instruction_data("create_vault", &[]),
         };

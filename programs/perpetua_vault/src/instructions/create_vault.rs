@@ -60,7 +60,6 @@ pub struct CreateVault<'info> {
     /// CHECK: pinned to the DAMM v2 program; see `CP_AMM_PROGRAM_ID`.
     #[account(address = CP_AMM_PROGRAM_ID)]
     pub cp_amm_program: UncheckedAccount<'info>,
-    pub rent: Sysvar<'info, Rent>,
 }
 
 pub fn handle_create_vault(ctx: Context<CreateVault>) -> Result<()> {

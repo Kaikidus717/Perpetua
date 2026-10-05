@@ -68,6 +68,21 @@ taken from that artifact, not from guesswork:
 6. **DAMM v2 data API** — `https://damm-v2.datapi.meteora.ag/pools?page=1&page_size=20` (documented).
 7. **Anchor / SDK compatibility** — the program compiles against `anchor-lang 0.32.2` with
    `solana-program 2.3`; `cargo check` and `cargo test -p perpetua_vault` are green.
+8. **The position NFT account is a cp-amm PDA, not an associated token account.** It is
+   `findProgramAddress(["position_nft_account", nftMint], cp-amm)`. Deriving it as an ATA yields an
+   address that does not exist, which is what `create_vault`'s owner assertion catches. Confirmed
+   against a live devnet position: the PDA exists, is owned by Token-2022, and its **authority is the
+   position owner** — which is what makes the `set_authority(AccountOwner)` hand-off to the vault PDA
+   possible in the first place. `@perpetua/sdk` mirrors the SDK's internal `derivePositionNftAccount`
+   in `findCpAmmPositionNftAccount`.
+9. **Anchor 0.32 takes instruction arguments positionally.** Passing an object of named arguments
+   fails outright for `u64` (`src.toArrayLike is not a function`) and, worse, **silently encodes `0`
+   for numeric types** like `u16`. `PerpetuaVaultClient` passes arguments positionally.
+10. **`claim_position_fee` pays into token accounts that must already exist.** The vault's and the
+   treasury's fee accounts are derived as ATAs and `create_vault` does not create them, so the first
+   `crank_claim` fails with `AccountNotInitialized`. `DammV2Adapter.claimSetupInstructions` returns
+   the idempotent creates to attach to every claim, and `PerpetuaVaultClient.shareAccountSetupInstructions`
+   does the same for the vault's share account before `stake`.
 
 ## Still to confirm before a real deployment
 

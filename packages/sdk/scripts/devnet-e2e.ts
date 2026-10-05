@@ -12,7 +12,7 @@ import {
   getDynamicFeeParams,
   getSqrtPriceFromPrice,
 } from "@meteora-ag/cp-amm-sdk";
-import { resolveNetwork } from "@perpetua/shared";
+import { SHARE_SUPPLY, resolveNetwork } from "@perpetua/shared";
 import {
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
@@ -30,11 +30,12 @@ import {
   Transaction,
   type Transaction as Tx,
   type VersionedTransaction,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import BN from "bn.js";
 import { DammV2Adapter } from "../src/adapters/dammV2.js";
 import { PerpetuaVaultClient } from "../src/vault/client.js";
-import { findConfigPda, findVaultPda } from "../src/vault/pda.js";
+import { findConfigPda, findStakePda, findVaultPda } from "../src/vault/pda.js";
 
 const network = resolveNetwork(process.env.CLUSTER ?? "devnet");
 const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
@@ -71,7 +72,7 @@ async function createMint(
     }),
     createInitializeMintInstruction(mint.publicKey, decimals, payer.publicKey, payer.publicKey),
   );
-  await connection.sendTransaction(transaction, [payer, mint], { skipPreflight: false });
+  await sendAndConfirmTransaction(connection, transaction, [payer, mint]);
   return mint.publicKey;
 }
 
@@ -90,7 +91,7 @@ async function fundAccount(
   const transaction = new Transaction().add(
     createMintToInstruction(mint, account, payer.publicKey, amount),
   );
-  await connection.sendTransaction(transaction, [payer], { skipPreflight: false });
+  await sendAndConfirmTransaction(connection, transaction, [payer]);
   return account;
 }
 
@@ -109,6 +110,20 @@ async function main(): Promise<void> {
 
   console.log(`cluster ${network.cluster} as ${payer.publicKey.toBase58()}`);
   console.log(`balance ${(await connection.getBalance(payer.publicKey)) / 1e9} SOL`);
+
+  // `create_vault` requires `Config` to exist, so a fresh cluster needs `init_config` first.
+  // Idempotent: skip when the account is already there.
+  const [config] = findConfigPda(vault.programId);
+  if (await connection.getAccountInfo(config)) {
+    console.log(`init_config: ${config.toBase58()} already exists`);
+  } else {
+    console.log(`init_config: creating Config at ${config.toBase58()}`);
+    const initIx = await vault.initConfig(
+      { admin: payer.publicKey, config, systemProgram: SystemProgram.programId },
+      0,
+    );
+    await provider.sendAndConfirm(new Transaction().add(initIx), [payer]);
+  }
 
   const tokenA = await createMint(connection, payer, 6);
   const tokenB = await createMint(connection, payer, 6);
@@ -166,7 +181,7 @@ async function main(): Promise<void> {
   });
   created.tx.feePayer = payer.publicKey;
   created.tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-  await connection.sendTransaction(created.tx, [payer, positionNft], { skipPreflight: false });
+  await sendAndConfirmTransaction(connection, created.tx, [payer, positionNft]);
 
   const pool = created.pool;
   const position = created.position;
@@ -177,7 +192,6 @@ async function main(): Promise<void> {
     `lock state: permanent=${detail.permanentLockedLiquidity} unlocked=${detail.unlockedLiquidity} vested=${detail.vestedLiquidity}`,
   );
 
-  const [config] = findConfigPda(vault.programId);
   const [vaultAddress] = findVaultPda(vault.programId, position);
   const shareMint = Keypair.generate();
 
@@ -218,14 +232,111 @@ async function main(): Promise<void> {
     },
     cfg.treasury,
   );
+  // Generate real trading fees so there is something to claim and to harvest.
+  await fundAccount(connection, payer, tokenA, BigInt(500_000_000));
+  await fundAccount(connection, payer, tokenB, BigInt(500_000_000));
+
+  async function swap(amountIn: BN): Promise<void> {
+    const state = await adapter.fetchPool(pool);
+    const tx = await cpAmm.swap({
+      payer: payer.publicKey,
+      pool,
+      inputTokenMint: tokenA,
+      outputTokenMint: tokenB,
+      amountIn,
+      minimumAmountOut: new BN(0),
+      tokenAMint: tokenA,
+      tokenBMint: tokenB,
+      tokenAVault: state.tokenAVault,
+      tokenBVault: state.tokenBVault,
+      tokenAProgram: TOKEN_PROGRAM_ID,
+      tokenBProgram: TOKEN_PROGRAM_ID,
+      referralTokenAccount: null,
+    });
+    await sendAndConfirmTransaction(connection, tx, [payer]);
+  }
+
+  await swap(new BN(20_000_000));
+  console.log("swap ok (fees now accrue on the position)");
+
+  // 1. Claim while nothing is staked: the program banks the fees as carry.
+  const setup = adapter.claimSetupInstructions(claim, vaultAddress, payer.publicKey);
   const crankIx = await vault.crankClaim({
     caller: payer.publicKey,
     config,
     vault: vaultAddress,
     ...claim,
   });
-  await provider.sendAndConfirm(new Transaction().add(crankIx), [payer]);
-  console.log("crank_claim ok");
+  await provider.sendAndConfirm(new Transaction().add(...setup, crankIx), [payer]);
+  console.log("crank_claim ok (unstaked -> banked as carry)");
+
+  // 2. Stake the entire supply. `create_vault` revoked the mint authority, so these are the only
+  //    shares that will ever exist.
+  const [stakeAddress] = findStakePda(vault.programId, vaultAddress, payer.publicKey);
+  const stakeIx = await vault.stake(
+    {
+      owner: payer.publicKey,
+      config,
+      vault: vaultAddress,
+      ...claim,
+      stake: stakeAddress,
+      shareMint: shareMint.publicKey,
+      ownerShareAccount: getAssociatedTokenAddressSync(shareMint.publicKey, payer.publicKey),
+      vaultShareAccount: getAssociatedTokenAddressSync(shareMint.publicKey, vaultAddress, true),
+      shareTokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    },
+    SHARE_SUPPLY,
+  );
+  await provider.sendAndConfirm(
+    new Transaction().add(
+      ...vault.shareAccountSetupInstructions({
+        payer: payer.publicKey,
+        shareMint: shareMint.publicKey,
+        vault: vaultAddress,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM,
+      }),
+      stakeIx,
+    ),
+    [payer],
+  );
+  const staked = await vault.fetchStake(stakeAddress);
+  console.log(`stake ok: ${staked.amount.toString()} shares`);
+
+  // 3. More fees, then claim again: the banked carry is released to the staker.
+  await swap(new BN(20_000_000));
+  const crankAgain = await vault.crankClaim({
+    caller: payer.publicKey,
+    config,
+    vault: vaultAddress,
+    ...claim,
+  });
+  await provider.sendAndConfirm(new Transaction().add(crankAgain), [payer]);
+  const afterCrank = await vault.fetchVault(vaultAddress);
+  console.log(
+    `crank_claim ok (claimed_a=${afterCrank.totalClaimedA.toString()} claimed_b=${afterCrank.totalClaimedB.toString()} carry_b=${afterCrank.carryB.toString()})`,
+  );
+
+  // 4. Harvest pays the staker out.
+  const harvestIx = await vault.harvest({
+    owner: payer.publicKey,
+    vault: vaultAddress,
+    stake: stakeAddress,
+    tokenAMint: tokenA,
+    tokenBMint: tokenB,
+    vaultAAccount: claim.vaultAAccount,
+    vaultBAccount: claim.vaultBAccount,
+    ownerAAccount: getAssociatedTokenAddressSync(tokenA, payer.publicKey),
+    ownerBAccount: getAssociatedTokenAddressSync(tokenB, payer.publicKey),
+    tokenAProgram: new PublicKey(detail.tokenAProgram),
+    tokenBProgram: new PublicKey(detail.tokenBProgram),
+  });
+  await provider.sendAndConfirm(new Transaction().add(harvestIx), [payer]);
+  const afterHarvest = await vault.fetchStake(stakeAddress);
+  console.log(
+    `harvest ok (pending_a=${afterHarvest.pendingA.toString()} pending_b=${afterHarvest.pendingB.toString()})`,
+  );
 
   console.log("devnet end-to-end complete");
 }

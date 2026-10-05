@@ -550,7 +550,8 @@ synthetic set does not model, so treat these numbers as an upper bound.
 
 ## Status
 
-Every claim below was verified by running it, not by reading the source.
+Every claim below was verified by running it, not by reading the source. The on-chain flow was run
+against **live devnet**, not just the local harness — see [Verified on devnet](#verified-on-devnet).
 
 | Area | State |
 |---|---|
@@ -578,6 +579,42 @@ Every claim below was verified by running it, not by reading the source.
 | `perpetua_vault` — Rust unit tests | 17 |
 | `perpetua_vault_litesvm` — boot + flow | 9 |
 | **Rust total** | **26** |
+
+### Verified on devnet
+
+`pnpm --filter @perpetua/sdk ops:devnet-e2e` runs the whole flow against the deployed program and
+finishes with `devnet end-to-end complete`:
+
+```
+init_config            -> Config h7oJ4q2qkaPt92YiFfYDuHRzvMj1UVeXPh1J3TyRQu3 (76 bytes)
+createCustomPool       -> a real DAMM v2 pool plus a permanently locked position
+                          (permanent=18446744078004599633000037588, unlocked=0, vested=0)
+create_vault           -> share mint minted 1,000,000.000000 shares, authority revoked
+swap                   -> real trading fees accrue on the position
+crank_claim            -> fees claimed by balance diff; unstaked, so they bank as carry
+stake                  -> 1,000,000,000,000 base units staked
+crank_claim            -> fees credited to the staker (total_claimed_b = 308,263)
+harvest                -> staker paid out
+```
+
+`pnpm --filter @perpetua/sdk ops:probe` prints the deployment's live state without trusting anything
+in this repository — program, Config, and every Vault/Stake account decoded from raw bytes:
+
+```
+program: 36 bytes, executable=true, owner=BPFLoaderUpgradeab1e...
+config account: 76 bytes
+all program accounts by size:
+  1 x 76 bytes   Config
+  2 x 129 bytes  Stake
+  7 x 413 bytes  Vault
+```
+
+Running it on a real cluster found eight defects that the local harness could not, all now fixed:
+the e2e never called `init_config` and never confirmed its transactions; `create_vault` declared an
+unused `rent` sysvar the SDK never passed; the position NFT account was derived as an associated
+token account instead of a cp-amm PDA; nothing created the vault's or treasury's fee token accounts;
+Anchor was being handed object-form arguments instead of positional ones; the vault's share token
+account was never created; and `harvest` omitted two required mint accounts.
 
 ```bash
 pnpm --filter @perpetua/sdk ops:extract-idls      # dump the Meteora IDLs we build against
@@ -633,6 +670,7 @@ Run from the repo root unless noted.
 | `pnpm --filter @perpetua/sdk ops:verify-offsets` | check position byte offsets against live accounts |
 | `pnpm --filter @perpetua/sdk ops:create-vault` | build and send `create_vault` from a local keypair |
 | `pnpm --filter @perpetua/sdk ops:devnet-e2e` | run the whole flow end to end on devnet |
+| `pnpm --filter @perpetua/sdk ops:probe` | read the deployment's live state back off the chain |
 | `pnpm --filter @perpetua/valuation backtest` | regenerate the calibration report |
 
 ## Testing

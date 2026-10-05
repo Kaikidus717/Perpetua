@@ -26,5 +26,5 @@ pub struct Vault {
 }
 
 impl Vault {
-    pub const LEN: usize = 8 + (32 * 9) + 8 + 16 + 16 + (8 * 6) + 32 + 8 + 1 + 4;
+    pub const LEN: usize = 8 + (32 * 9) + 8 + 16 + 16 + (8 * 4) + 32 + 8 + 1 + 4;
 }

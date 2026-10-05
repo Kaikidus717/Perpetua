@@ -10,6 +10,16 @@ export function findCpAmmEventAuthority(): [PublicKey, number] {
   );
 }
 
+/// DAMM v2 does not hold a position NFT in an associated token account. The account is a PDA of the
+/// cp-amm program seeded by the NFT mint, so the address is a function of the mint alone — no owner
+/// argument. Mirrors `derivePositionNftAccount` inside `@meteora-ag/cp-amm-sdk`.
+export function findCpAmmPositionNftAccount(nftMint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [seed("position_nft_account"), nftMint.toBytes()],
+    new PublicKey(PROGRAM_IDS.dammV2),
+  )[0];
+}
+
 export function findConfigPda(programId: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([seed("config")], programId);
 }

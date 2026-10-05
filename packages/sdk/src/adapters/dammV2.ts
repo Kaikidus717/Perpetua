@@ -1,9 +1,13 @@
 import { CpAmm, type PoolState, type PositionState, getTokenProgram } from "@meteora-ag/cp-amm-sdk";
 import { CP_AMM_POOL_AUTHORITY, PROGRAM_IDS } from "@perpetua/shared";
 import type { PositionSummary } from "@perpetua/shared";
-import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { type Connection, PublicKey } from "@solana/web3.js";
-import { findCpAmmEventAuthority } from "../vault/pda.js";
+import {
+  TOKEN_2022_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
+import { type Connection, PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import { findCpAmmEventAuthority, findCpAmmPositionNftAccount } from "../vault/pda.js";
 import type { ClaimAccounts } from "../vault/types.js";
 
 export interface PositionDetail {
@@ -76,7 +80,7 @@ export class DammV2Adapter {
       address: address.toBase58(),
       pool: state.pool.toBase58(),
       nftMint: state.nftMint.toBase58(),
-      nftAccount: this.positionNftAccount(state.pool, state.nftMint).toBase58(),
+      nftAccount: findCpAmmPositionNftAccount(state.nftMint).toBase58(),
       positionNftProgram: TOKEN_2022_PROGRAM_ID.toBase58(),
       tokenAMint: poolState.tokenAMint.toBase58(),
       tokenBMint: poolState.tokenBMint.toBase58(),
@@ -99,8 +103,11 @@ export class DammV2Adapter {
     return details;
   }
 
-  positionNftAccount(pool: PublicKey, nftMint: PublicKey): PublicKey {
-    return getAssociatedTokenAddressSync(nftMint, pool, true, TOKEN_2022_PROGRAM_ID);
+  /// The position NFT account is a cp-amm PDA seeded by the NFT mint, **not** an associated token
+  /// account. Deriving an ATA here silently produces an empty address and every flow that needs the
+  /// NFT then fails on the owner check.
+  positionNftAccount(nftMint: PublicKey): PublicKey {
+    return findCpAmmPositionNftAccount(nftMint);
   }
 
   isPermanentLocked(state: PositionState): boolean {
@@ -152,5 +159,46 @@ export class DammV2Adapter {
       tokenBProgram,
       cpAmmProgram: new PublicKey(PROGRAM_IDS.dammV2),
     };
+  }
+
+  /// cp-amm pays the claimed fees into the vault's own token accounts, and the protocol skim pays
+  /// into the treasury's. Both are derived as associated token accounts, and `create_vault` does not
+  /// create either — so the first `crank_claim` fails with `AccountNotInitialized`. These creates are
+  /// idempotent and belong in the same transaction as the claim.
+  claimSetupInstructions(
+    claim: ClaimAccounts,
+    vault: PublicKey,
+    payer: PublicKey,
+  ): TransactionInstruction[] {
+    const accounts = [
+      {
+        account: claim.vaultAAccount,
+        mint: claim.tokenAMint,
+        owner: vault,
+        program: claim.tokenAProgram,
+      },
+      {
+        account: claim.vaultBAccount,
+        mint: claim.tokenBMint,
+        owner: vault,
+        program: claim.tokenBProgram,
+      },
+      {
+        account: claim.treasuryAAccount,
+        mint: claim.tokenAMint,
+        owner: claim.treasury,
+        program: claim.tokenAProgram,
+      },
+      {
+        account: claim.treasuryBAccount,
+        mint: claim.tokenBMint,
+        owner: claim.treasury,
+        program: claim.tokenBProgram,
+      },
+    ];
+    // Argument order is (payer, associatedToken, owner, mint, tokenProgram) — owner comes first.
+    return accounts.map(({ account, mint, owner, program }) =>
+      createAssociatedTokenAccountIdempotentInstruction(payer, account, owner, mint, program),
+    );
   }
 }

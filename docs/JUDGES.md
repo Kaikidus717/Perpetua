@@ -120,13 +120,14 @@ Left, stated plainly:
   On a slow network, fetch it in 16 MB range chunks in parallel (GitHub throttles a single long-lived
   connection); `scripts/out/pt-all.sh` does exactly that and stages the tarball outside the Solana
   cache so the toolchain installer cannot reclaim it.
-- **The fee flow runs against a mock DAMM v2, not the real binary.** `tests/litesvm/tests/flow.rs`
-  drives `init_config → create_vault → crank_claim → harvest` against the compiled program with the
+- **The LiteSVM fee flow runs against a mock DAMM v2, but the devnet e2e runs against the real one.**
+  `tests/litesvm/tests/flow.rs` drives `init_config → create_vault → crank_claim → harvest` with the
   real SPL token program and real PDA signing, but the cp-amm callee is `tests/mock-cp-amm`. The
   mock reproduces the one behaviour the vault depends on — the fee delta arriving in the vault's
-  token accounts — and nothing else, so DAMM v2's own pool validation and fee arithmetic are out of
-  scope here. `scripts/fetch-programs.sh` dumps the real `cp_amm.so`; pointing the harness at it is a
-  one-line change in `tests/litesvm/src/lib.rs`.
+  token accounts — and nothing else. `ops:devnet-e2e` closes that gap: it creates a real DAMM v2
+  pool with a permanently locked position, swaps to generate real fees, and runs the whole flow
+  against `cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG` on devnet. `scripts/fetch-programs.sh`
+  dumps the real `cp_amm.so` for pointing the LiteSVM harness at it too.
 - **The devnet deployment is live.** `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2` is deployed on
   devnet, and the bytecode read back off-chain is byte-for-byte the artifact the tests ran against.
   `ops:devnet-e2e` drives the whole flow against it; see [DEVNET.md](DEVNET.md).

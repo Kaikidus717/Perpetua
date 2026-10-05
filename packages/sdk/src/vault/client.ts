@@ -1,4 +1,8 @@
 import { type AnchorProvider, type Idl, Program } from "@coral-xyz/anchor";
+import {
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
 import { PERPETUA_VAULT_IDL } from "../idl/perpetua_vault.js";
@@ -53,7 +57,7 @@ export class PerpetuaVaultClient {
     accounts: { admin: PublicKey; config: PublicKey; systemProgram: PublicKey },
     protocolFeeBps: number,
   ) {
-    return this.method("initConfig")({ protocolFeeBps }).accounts(accounts).instruction();
+    return this.method("initConfig")(protocolFeeBps).accounts(accounts).instruction();
   }
 
   createVault(accounts: CreateVaultAccounts) {
@@ -78,9 +82,7 @@ export class PerpetuaVaultClient {
     } & ClaimAccounts,
     amount: bigint,
   ) {
-    return this.method("stake")({ amount: new BN(amount.toString()) })
-      .accounts(accounts)
-      .instruction();
+    return this.method("stake")(new BN(amount.toString())).accounts(accounts).instruction();
   }
 
   unstake(
@@ -96,9 +98,7 @@ export class PerpetuaVaultClient {
     } & ClaimAccounts,
     amount: bigint,
   ) {
-    return this.method("unstake")({ amount: new BN(amount.toString()) })
-      .accounts(accounts)
-      .instruction();
+    return this.method("unstake")(new BN(amount.toString())).accounts(accounts).instruction();
   }
 
   unstakeNoClaim(
@@ -113,7 +113,7 @@ export class PerpetuaVaultClient {
     },
     amount: bigint,
   ) {
-    return this.method("unstakeNoClaim")({ amount: new BN(amount.toString()) })
+    return this.method("unstakeNoClaim")(new BN(amount.toString()))
       .accounts(accounts)
       .instruction();
   }
@@ -122,6 +122,8 @@ export class PerpetuaVaultClient {
     owner: PublicKey;
     vault: PublicKey;
     stake: PublicKey;
+    tokenAMint: PublicKey;
+    tokenBMint: PublicKey;
     vaultAAccount: PublicKey;
     vaultBAccount: PublicKey;
     ownerAAccount: PublicKey;
@@ -130,6 +132,34 @@ export class PerpetuaVaultClient {
     tokenBProgram: PublicKey;
   }) {
     return this.method("harvest")().accounts(accounts).instruction();
+  }
+
+  /// The program holds staked shares in a token account owned by the vault PDA, and that account is
+  /// declared as a plain token-account constraint rather than `init_if_needed` — so it must exist
+  /// before the first `stake`. Nothing creates it, so attach this to every stake/unstake. Idempotent.
+  shareAccountSetupInstructions(params: {
+    payer: PublicKey;
+    shareMint: PublicKey;
+    vault: PublicKey;
+    tokenProgram: PublicKey;
+    associatedTokenProgram: PublicKey;
+  }): TransactionInstruction[] {
+    const vaultShareAccount = getAssociatedTokenAddressSync(
+      params.shareMint,
+      params.vault,
+      true,
+      params.tokenProgram,
+    );
+    return [
+      createAssociatedTokenAccountIdempotentInstruction(
+        params.payer,
+        vaultShareAccount,
+        params.vault,
+        params.shareMint,
+        params.tokenProgram,
+        params.associatedTokenProgram,
+      ),
+    ];
   }
 
   async fetchVault(address: PublicKey): Promise<VaultAccountData> {

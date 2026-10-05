@@ -114,7 +114,7 @@ Everything below is verified by running it, not by inspection.
 
 | Component | State |
 |---|---|
-| `programs/perpetua_vault` | `cargo check` clean; `cargo test -p perpetua_vault` → **7/7 pass** (accrual, carry, protocol fee, conservation) |
+| `programs/perpetua_vault` | **deployed on devnet** at `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2` (ProgramData `3TZquUCXK8AgLHVkAtTFVu3jx6qCJu8NY7umV6FKg7RG`); `cargo test --workspace` → **26 pass** (17 unit + 1 boot + 8 flow) |
 | Position-lock offsets | verified against **11 live on-chain DAMM v2 positions**, one of them permanently locked |
 | `@perpetua/shared`, `@perpetua/valuation`, `@perpetua/sdk` | built + unit tested |
 | `@perpetua/api`, `@perpetua/indexer`, `@perpetua/keeper` | built + unit tested; API serves every route at runtime |

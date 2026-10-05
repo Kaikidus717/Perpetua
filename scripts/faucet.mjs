@@ -29,12 +29,12 @@ const DEFAULT_ENDPOINT = "https://api.devnet.solana.com";
 const WEB_FAUCET = "https://faucet.solana.com";
 const STATE_PATH = "scripts/out/faucet-state.json";
 
-/// Solana rent-exempt minimum is (size + 128) * 6960 lamports (2 years at 3480 lamports/byte-year).
-const LAMPORTS_PER_BYTE = 6960;
-const ACCOUNT_OVERHEAD = 128;
+/// A deployed program's ProgramData account is the ELF plus a 45-byte header
+/// (4-byte enum + 8-byte slot + 1-byte authority option + 32-byte authority).
+const PROGRAMDATA_HEADER_BYTES = 45;
 /// The endpoint caps a single airdrop at 2 SOL; anything larger is rejected outright.
 const MAX_PER_REQUEST = 2_000_000_000n;
-/// Headroom for the program account, the upgrade buffer and signature fees.
+/// Headroom for the program account and signature fees.
 const FEE_BUFFER = 10_000_000n;
 
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -128,16 +128,24 @@ function resolveTargets(flags) {
   );
 }
 
-function requiredLamports(flags) {
+/// Asks the cluster rather than hardcoding the rent rate: it is a chain parameter and is not the
+/// same on every cluster. `getMinimumBalanceForRentExemption` already includes the 128-byte account
+/// storage overhead, so passing the account size is enough.
+async function requiredLamports(endpoint, flags) {
   const path = resolve(ROOT, flags.so ?? DEFAULT_SO);
   if (!existsSync(path)) {
     throw new Error(`no artifact at ${path}; build it first:\n  cargo build-sbf`);
   }
   const size = readFileSync(path).byteLength;
-  return {
-    size,
-    lamports: BigInt(size + ACCOUNT_OVERHEAD) * BigInt(LAMPORTS_PER_BYTE) + FEE_BUFFER,
-  };
+  const { payload } = await rpc(endpoint, "getMinimumBalanceForRentExemption", [
+    size + PROGRAMDATA_HEADER_BYTES,
+  ]);
+  if (typeof payload.result !== "number") {
+    throw new Error(
+      `could not read rent exemption: ${payload.error?.message ?? "unexpected response"}`,
+    );
+  }
+  return { size, lamports: BigInt(payload.result) + FEE_BUFFER };
 }
 
 async function rpc(endpoint, method, params) {
@@ -203,7 +211,7 @@ async function main() {
   const flags = parseArgs(process.argv.slice(2));
   const endpoint = flags.endpoint ?? process.env.RPC_URL ?? DEFAULT_ENDPOINT;
   const { pubkey, source, program } = resolveTargets(flags);
-  const { size, lamports: required } = requiredLamports(flags);
+  const { size, lamports: required } = await requiredLamports(endpoint, flags);
 
   console.log(`endpoint  ${endpoint}`);
   console.log(`funding   ${pubkey}`);

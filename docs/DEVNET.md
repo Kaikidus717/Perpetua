@@ -77,19 +77,41 @@ the SDK and the LiteSVM harness all read from it, and `scripts/program-id.mjs sy
 `keys/README.md`) so the deployed address is reproducible. **Mainnet uses a different key**, kept in
 a secret store and never committed.
 
+### Deployed
+
+| | |
+|---|---|
+| program | `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2` |
+| ProgramData | `3TZquUCXK8AgLHVkAtTFVu3jx6qCJu8NY7umV6FKg7RG` |
+| upgrade authority | `8iY6CPnv5TPLkdykzPxWB9Sm9Z4dsNfUAzXL3mSMMHa4` |
+| artifact | 448,248 bytes, SBF verifier clean (0 frame-space overflows) |
+
+```bash
+solana program show G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2 --url devnet
+```
+
 ### SOL and the faucet
 
-A deployment rents storage by the byte. Rent exemption is `(size + 128) * 6960` lamports, and the
-built artifact is 448,248 bytes, so:
+A deployment rents storage by the byte, and the rent rate is a **chain parameter**, not a constant —
+so ask the cluster rather than hardcoding it:
+
+```bash
+solana rent 448248       # devnet: 2.27775008 SOL
+```
+
+The deployed program's ProgramData account is the ELF plus a 45-byte header, so for the built
+artifact:
 
 | | |
 |---|---|
 | artifact | 448,248 bytes |
-| rent-exempt | **3.121 SOL** |
+| ProgramData account | 448,293 bytes |
+| rent-exempt (measured) | **2.278 SOL** |
 | plus fees | ~0.01 SOL |
 
-Build and test need no SOL at all — only the deploy does. Every Meteora program Perpetua calls is
-already deployed on devnet.
+That balance is a **reserve, not a fee**: it sits in the ProgramData account and comes back if you
+close the program. Build and test need no SOL at all — only the deploy does. Every Meteora program
+Perpetua calls is already deployed on devnet.
 
 The public faucet is the only free source, and it fails in two ways that a naive retry loop cannot
 tell apart:
@@ -97,16 +119,28 @@ tell apart:
 1. **Rate limited.** `https://api.devnet.solana.com` allows **one airdrop per IP per window**, at
    most 2 SOL per request. The response headers say so directly
    (`x-ratelimit-airdrop-limit: 1`), and hammering it makes nothing better. Since the program needs
-   3.121 SOL and one request caps at 2 SOL, **a single credit is never enough** — two windows are
+   2.278 SOL and one request caps at 2 SOL, **a single credit is never enough** — two windows are
    required, whatever you do.
 2. **Service fault.** The faucet can return `{"code":-32603,"message":"Internal error"}` *while still
-   consuming the credit*. This is a fault on the faucet's side, not a rate limit, and it has been
-   the observed state. Retrying just burns the next window.
+   consuming the credit*. This is a fault on the faucet's side, not a rate limit. Retrying just burns
+   the next window.
 
-`pnpm ops:faucet` handles both. It sizes the request from the real artifact instead of guessing,
-reads the credit headers, distinguishes a fault from a rate limit (and stops rather than burning
-credits on a broken backend), backs off exponentially, and persists state to
-`scripts/out/faucet-state.json` so a later run resumes:
+#### Fund the payer, not the program address
+
+`anchor deploy` spends from the provider wallet (`~/.config/solana/id.json`); the program keypair
+only *signs* the program account. Those are usually different addresses, and the distinction matters
+twice over:
+
+- **The payer must hold the SOL.**
+- **The program address must be empty at deploy time.** If you airdrop to the program address, you
+  create a *system account* there, and the deploy then fails with
+  `is not an upgradeable program or already in use`. Recover by draining that address to zero (a
+  system account with no lamports and no data is purged) and paying from a separate wallet.
+
+`pnpm ops:faucet` handles the funding side. It sizes the request from the real artifact by asking the
+cluster for the rent exemption, reads the credit headers, distinguishes a fault from a rate limit
+(and stops rather than burning credits on a broken backend), backs off exponentially, and persists
+state to `scripts/out/faucet-state.json` so a later run resumes:
 
 ```bash
 pnpm ops:faucet                 # request what is still missing
@@ -116,25 +150,26 @@ pnpm ops:faucet -- --attempts 12 --interval 600
 
 Exit codes: `0` funded, `1` still short, `2` faucet fault.
 
-**If the faucet is faulting, use the web faucet — it is a different backend and is the reliable
-path.** It needs a browser and GitHub auth, so it cannot be scripted:
+**If the faucet is faulting, use the web faucet — a different backend, and the reliable path.** It
+needs a browser and GitHub auth, so it cannot be scripted:
 
-> <https://faucet.solana.com> — paste `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2`
+> <https://faucet.solana.com> — network Devnet, paste the address `solana address` prints
 
-Either way, once the address holds enough SOL:
+Either way, once the payer holds enough SOL:
 
 ```bash
 solana balance
+node scripts/program-id.mjs install-keypair
 anchor deploy --provider.cluster devnet
 ```
 
 #### On shrinking the artifact
 
-`opt-level = "z"` in `[profile.release]` cuts the artifact to **320,472 bytes (2.231 SOL, -0.89 SOL)**.
+`opt-level = "z"` in `[profile.release]` cuts the artifact to **320,472 bytes (1.629 SOL, -0.65 SOL)**.
 It is **not** enabled, and the reason is worth recording: at that level `cargo build-sbf`'s verifier
 reports **16** frame-space overflows (`... may cause undefined behavior during execution`) inside
 dependency code (`crypto_common`, `hybrid_array`) that are absent at the default level. Trading a
-verified-clean artifact for 0.89 SOL is a bad deal for a program that custodies fee rights.
+verified-clean artifact for 0.65 SOL is a bad deal for a program that custodies fee rights.
 `panic = "abort"` and `no-log-ix-name` were also measured and buy only ~2 KB, so they were dropped too.
 
 ## 4. Run the end-to-end flow

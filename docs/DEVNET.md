@@ -30,17 +30,27 @@ avm install 0.32.1 && avm use 0.32.1
 
 ## 2. A devnet keypair and SOL
 
-The program keypair is committed (`keys/perpetua_vault-devnet.json`), so restore it rather than
-generating a new one:
+Two different keys are involved, and mixing them up is the usual reason a deploy fails:
+
+| key | path | role |
+|---|---|---|
+| **deploy wallet** | `~/.config/solana/id.json` | pays for everything; this is Anchor's provider wallet |
+| **program keypair** | `keys/perpetua_vault-devnet.json` → `target/deploy/perpetua_vault-keypair.json` | signs creation of the program account, and fixes the address |
+
+The simplest setup makes them the *same* address, so there is only one thing to fund:
 
 ```bash
-node scripts/program-id.mjs install-keypair    # writes ~/.config/solana/id.json
+mkdir -p ~/.config/solana
+cp keys/perpetua_vault-devnet.json ~/.config/solana/id.json
 solana config set --url devnet
+solana address        # G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2
+
+node scripts/program-id.mjs install-keypair   # writes target/deploy/perpetua_vault-keypair.json
 ```
 
-Then fund the program address. This is the part that is genuinely awkward — see
-[SOL and the faucet](#sol-and-the-faucet) below — and `pnpm ops:faucet` automates as much of it as
-can honestly be automated.
+Important: `install-keypair` only installs the **program** keypair — it does not create a wallet, so
+the `cp` above is what makes that address your payer. Then fund it; see
+[SOL and the faucet](#sol-and-the-faucet) below.
 
 ## 3. Build and deploy
 

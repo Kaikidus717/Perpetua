@@ -19,7 +19,7 @@
 //                           [--dry-run]
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -90,21 +90,42 @@ function parseArgs(argv) {
   return flags;
 }
 
-/// Reads the devnet program keypair committed under keys/ so the address is reproducible.
-function readPubkey(flags) {
-  if (flags.pubkey) return flags.pubkey;
-  const path = resolve(ROOT, flags.keypair ?? DEFAULT_KEYPAIR);
-  if (!existsSync(path)) {
-    throw new Error(
-      "no public key available: pass --pubkey, or create the keypair with\n" +
-        "  node scripts/program-id.mjs install-keypair",
-    );
-  }
+function pubkeyFromFile(path) {
+  if (!existsSync(path)) return null;
   const secret = JSON.parse(readFileSync(path, "utf8"));
   if (!Array.isArray(secret) || secret.length !== 64) {
     throw new Error(`${path} is not a 64-byte Solana keypair`);
   }
   return base58(Uint8Array.from(secret.slice(32)));
+}
+
+/// `anchor deploy` spends from the provider wallet (`~/.config/solana/id.json`); the program keypair
+/// only signs the program account, and it is a different address unless the committed devnet keypair
+/// has also been copied to the CLI wallet. The payer is therefore what we fund by default, and both
+/// addresses are reported so the distinction is never implicit.
+function resolveTargets(flags) {
+  const programPath = resolve(ROOT, DEFAULT_KEYPAIR);
+  const program = pubkeyFromFile(programPath);
+
+  if (flags.pubkey) return { pubkey: flags.pubkey, source: "--pubkey", program };
+
+  if (flags.keypair) {
+    const path = resolve(flags.keypair);
+    const pubkey = pubkeyFromFile(path);
+    if (!pubkey) throw new Error(`no keypair at ${path}`);
+    return { pubkey, source: path, program };
+  }
+
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const payerPath = join(home, ".config", "solana", "id.json");
+  const payer = pubkeyFromFile(payerPath);
+  if (payer) return { pubkey: payer, source: payerPath, program };
+  if (program) return { pubkey: program, source: programPath, program };
+
+  throw new Error(
+    "no public key available: pass --pubkey, or create the deploy wallet with\n" +
+      "  cp keys/perpetua_vault-devnet.json ~/.config/solana/id.json",
+  );
 }
 
 function requiredLamports(flags) {
@@ -167,10 +188,12 @@ function guidance(pubkey) {
   return [
     "",
     "The reliable alternative is the web faucet, which uses a different backend:",
-    `  ${WEB_FAUCET}`,
-    `  paste this address: ${pubkey}`,
+    `  ${WEB_FAUCET}   (network: Devnet)`,
+    `  address to paste: ${pubkey}`,
     "",
-    "Once the address holds enough SOL:",
+    "Then confirm the balance and deploy:",
+    "  solana config set --url devnet",
+    `  solana balance ${pubkey}`,
     "  node scripts/program-id.mjs install-keypair",
     "  anchor deploy --provider.cluster devnet",
   ].join("\n");
@@ -179,11 +202,19 @@ function guidance(pubkey) {
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
   const endpoint = flags.endpoint ?? process.env.RPC_URL ?? DEFAULT_ENDPOINT;
-  const pubkey = readPubkey(flags);
+  const { pubkey, source, program } = resolveTargets(flags);
   const { size, lamports: required } = requiredLamports(flags);
 
   console.log(`endpoint  ${endpoint}`);
-  console.log(`address   ${pubkey}`);
+  console.log(`funding   ${pubkey}`);
+  console.log(`source    ${source}`);
+  if (program && program !== pubkey) {
+    console.log(`program   ${program}`);
+    console.log(
+      "          the deploy is paid from the funding address, so that is the one that needs",
+    );
+    console.log("          SOL; the program keypair only signs the program account");
+  }
   console.log(`artifact  ${size} bytes -> ${sol(required)} SOL required`);
 
   const start = await balanceOf(endpoint, pubkey);

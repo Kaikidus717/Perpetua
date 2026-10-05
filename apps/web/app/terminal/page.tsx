@@ -51,6 +51,7 @@ export default function TerminalPage() {
         <input
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          aria-label="Pool address to price"
           placeholder="pool address (leave blank for the demo pool)"
           className="min-w-[22rem] flex-1 rounded-lg border border-edge bg-panel px-4 py-2 font-mono text-sm outline-none focus:border-accent"
         />

@@ -15,6 +15,7 @@ export interface ClosedMarketFeeCurveInput {
   holidays?: ReadonlySet<string>;
 }
 
+/// DBC fee-scheduler fields. VERIFY these names against the deployed DBC IDL before mainnet.
 export interface FeeSchedulerParam {
   startingFeeBps: number;
   endingFeeBps: number;
@@ -93,12 +94,3 @@ export function buildClosedMarketFeeCurve(input: ClosedMarketFeeCurveInput): Clo
     warnings,
   };
 }
-
-/// VERIFY: the DBC fee scheduler field names (`startingFeeBps`, `endingFeeBps`,
-/// `numberOfPeriod`, `totalDuration`) against the deployed DBC IDL before mainnet.
-export const FEE_SCHEDULER_FIELDS = [
-  "startingFeeBps",
-  "endingFeeBps",
-  "numberOfPeriod",
-  "totalDuration",
-] as const;

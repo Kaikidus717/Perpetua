@@ -274,10 +274,6 @@ importers:
         version: 2.1.8(@types/node@22.10.2)
 
   packages/shared:
-    dependencies:
-      zod:
-        specifier: 3.23.8
-        version: 3.23.8
     devDependencies:
       rimraf:
         specifier: 6.0.1

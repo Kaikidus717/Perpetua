@@ -51,9 +51,12 @@ anchor test                                             # LiteSVM suite (needs f
 Invariants under test are listed in [SECURITY.md](SECURITY.md): fee conservation, no-liquidity-change,
 the JIT-staking attack, fixed supply, zero-fee no-op and paused-mint exits.
 
-`cargo test -p perpetua_vault` runs 13 unit tests: 7 on the fee-per-share accrual and 6 on the
-Token-2022 extension parser, including a truncated TLV entry. `cargo test -p perpetua_vault_litesvm`
-then loads the compiled binary into LiteSVM and asserts it is a valid, executable program.
+`cargo test --workspace` runs **26** Rust tests: **17** in `perpetua_vault` (fee-per-share accrual,
+carry banking and release, fee conservation, the protocol-fee split, the Token-2022 extension parser
+including a truncated TLV entry, the pinned SPL Token `SetAuthority` wire format, and the
+position-lock byte offsets) and **9** in the LiteSVM harness under `tests/litesvm` — one that loads
+the compiled binary and asserts it is a valid, executable program, and eight that drive
+`init_config → create_vault → crank_claim → harvest` against a mock DAMM v2.
 
 ## 5. KPI page
 
@@ -71,8 +74,9 @@ Real and running:
   derives the full `claim_position_fee` account set from pool state; `DlmmAdapter` builds the
   permissionless pair and the one-sided ask ladder; `DbcAdapter` builds the financeable config.
 - **The program compiles for SBPF and its logic is tested.** `anchor build --no-idl` exits 0 and
-  writes `target/deploy/perpetua_vault.so` (438,688 bytes, valid ELF, no stack-frame overflows).
-  `cargo test -p perpetua_vault` → 13/13 and `cargo clippy -p perpetua_vault -- -D warnings` is clean.
+  writes `target/deploy/perpetua_vault.so` (448,248 bytes, valid ELF, no stack-frame overflows).
+  `cargo test --workspace` is green and `cargo clippy --workspace --all-targets -- -D warnings` is
+  clean.
 - **Building and running the program found four real bugs**, none of which were visible from reading
   the source:
 
@@ -123,7 +127,8 @@ Left, stated plainly:
   token accounts — and nothing else, so DAMM v2's own pool validation and fee arithmetic are out of
   scope here. `scripts/fetch-programs.sh` dumps the real `cp_amm.so`; pointing the harness at it is a
   one-line change in `tests/litesvm/src/lib.rs`.
-- **A devnet deployment and live end-to-end run** need a funded devnet keypair, which comes from
-  `https://faucet.solana.com`; `ops:devnet-e2e` then runs the whole flow.
+- **The devnet deployment is live.** `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2` is deployed on
+  devnet, and the bytecode read back off-chain is byte-for-byte the artifact the tests ran against.
+  `ops:devnet-e2e` drives the whole flow against it; see [DEVNET.md](DEVNET.md).
 - **The DLMM pair PDA derivation** for `createLbPair2` should be confirmed on devnet (see
   [INTEGRATIONS.md](INTEGRATIONS.md)).

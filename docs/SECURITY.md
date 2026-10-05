@@ -16,6 +16,9 @@ vault PDA owns the NFT account, and the fee stream can only be claimed and split
 | Wrong share mint | `share_mint` is pinned with an `address = vault.share_mint` constraint. |
 | Arithmetic overflow | All arithmetic is `checked_*`; accumulator math uses `u128` with `PRECISION = 1e18`. |
 | Rounding leakage | User claims floor; dust accumulates in the vault. The invariant `Σ harvested + Σ pending + carry + vault balance == Σ claimed` holds up to bounded dust. |
+| Carry capture — the first staker skims fees earned while nobody was staked | Fees claimed while `total_staked == 0` are banked in `carry_a/b` and released to the next stakers. |
+| Dust griefing — tiny stakes force a crank or bloat accounting | Carry is only released once a real stake exists. A minimum stake amount is the intended follow-up. |
+| Ladder front-running — someone buys ahead of the sale seeding | The ladder is seeded in one transaction, and the primary sale mode is ask-side limit orders. |
 
 ## Invariants (tested)
 
@@ -54,19 +57,6 @@ The extension walk lives in `programs/perpetua_vault/src/extensions.rs` and is u
 synthetic TLV buffers, including a truncated entry (the parser stops rather than trusting a partial
 payload). VERIFY the extension type ids against the SPL Token-2022 registry before mainnet.
 
-## Threat model
-
-| Threat | Mitigation |
-|---|---|
-| **JIT sandwich** — stake immediately before a claim, unstake right after | `stake` and `unstake` claim **before** touching accounting, in the same transaction, so a fresh staker cannot capture fees that already existed |
-| **Fake position substitution** — hand the vault someone else's position | the vault is keyed by the position address (`["vault", position]`) and `has_one = pool` pins the pool on every fee-touching instruction |
-| **Bricked claims** — a paused or blocked fee mint stops distributions | `unstake_no_claim` exits without the claim CPI; fees stay in the position and are credited at the next successful touch |
-| **Rounding** — repeated small claims drain more than they should | user claims floor, dust stays in the vault, and the conservation invariant bounds the leakage |
-| **Carry capture** — the first staker skims fees earned while nobody was staked | disclosed in the docs; optional dust-stake seed at creation to neutralise it |
-| **Admin abuse** — the admin pauses exits or reaches the principal | the pause cannot touch `unstake`/`harvest`/`crank_claim`; there is no instruction that moves the NFT or the principal |
-| **Dust griefing** — tiny stakes force a crank or bloat accounting | minimum stake amount; carry is released only when a real stake exists |
-| **Ladder front-running** — someone buys ahead of the sale seeding | the ladder is seeded in one transaction; the primary sale mode is ask-side limit orders |
-
 ## Known limitations
 
 These are honest gaps, not oversights, and each one is recorded where a reviewer will look for it:
@@ -80,6 +70,11 @@ These are honest gaps, not oversights, and each one is recorded where a reviewer
 - **The LiteSVM suite uses a mock DAMM v2.** It proves the vault's own accounting and PDA signing
   against the real SPL token program, but not DAMM v2's pool validation. A fork test with the real
   `cp_amm.so` (`scripts/fetch-programs.sh`) is the next step, not a claim made here.
+- **Only fully permanently locked positions are accepted.** Mixed positions must be split with
+  `split_position` first.
+- **The DAMM v2 `claim_position_fee` account order and the position lock byte offsets are pinned
+  constants in the program.** See [INTEGRATIONS.md](INTEGRATIONS.md) and re-confirm them against the
+  deployed IDL before a real deployment.
 
 ## Incident runbook
 
@@ -99,10 +94,4 @@ These are honest gaps, not oversights, and each one is recorded where a reviewer
   delegate.
 - The program is **unaudited**. Do not put more at risk than you can lose.
 
-## Known limitations
 
-- Only fully permanently locked positions are accepted. Mixed positions must be split with
-  `split_position` first.
-- The DAMM v2 `claim_position_fee` account order and the position lock byte offsets are pinned
-  constants in the program; see [INTEGRATIONS.md](INTEGRATIONS.md). Re-confirm them against the
-  deployed IDL before a real deployment.

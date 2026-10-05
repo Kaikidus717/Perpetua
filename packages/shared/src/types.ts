@@ -8,8 +8,6 @@ export type RiskFlag =
 
 export type FeeCollectMode = "claimable" | "compounding";
 
-export type PositionLockKind = "permanent" | "vesting" | "unlocked";
-
 export interface PositionSummary {
   address: string;
   pool: string;

@@ -49,6 +49,7 @@ export interface OnchainPosition {
   permanentLockedLiquidity: string;
   feeAPending: string;
   feeBPending: string;
+  eligibility: { eligible: boolean; reasons: string[] };
 }
 
 export interface ValuationParams {

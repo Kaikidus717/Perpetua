@@ -1,6 +1,7 @@
 import { DammV2Adapter } from "@perpetua/sdk/adapters/damm-v2";
 import { buildFinanceablePreset, validatePreset } from "@perpetua/sdk/dbc";
 import type { DataApiPort } from "@perpetua/sdk/ports";
+import { evaluateEligibility } from "@perpetua/sdk/positions";
 import { buildLadder } from "@perpetua/sdk/sale";
 import {
   DISCOUNT_RATE_ANNUAL,
@@ -27,6 +28,22 @@ export interface AppDeps {
   demoWallet?: string;
   /// When set, the `/v1/tx/*` routes can build unsigned transactions for wallets.
   connection?: Connection;
+  /// Browser origins allowed to call the API. Defaults to `CORS_ORIGINS`.
+  corsOrigins?: string[];
+}
+
+/// Browser origins allowed to call the API, comma-separated in `CORS_ORIGINS`. Development
+/// defaults to the local web app; production is same-origin only until a deploy opts in, so the
+/// transaction-building routes are not callable from any page on the internet.
+function allowedOrigins(): string[] {
+  const configured = (process.env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (configured.length > 0) return configured;
+  return process.env.NODE_ENV === "production"
+    ? []
+    : ["http://localhost:3000", "http://127.0.0.1:3000"];
 }
 
 const DEFAULT_RISK: ValuationRiskInput = {
@@ -99,7 +116,8 @@ function serialize(result: ValuationResult) {
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
-  app.use("*", cors());
+  const origins = deps.corsOrigins ?? allowedOrigins();
+  if (origins.length > 0) app.use("*", cors({ origin: origins }));
 
   app.get("/health", (c) => c.json({ ok: true }));
 
@@ -123,14 +141,24 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ positions });
   });
 
-  // On-chain position detail straight from the DAMM v2 program, including the derived
-  // NFT token account and token programs needed to build `create_vault`.
+  // On-chain position detail straight from the DAMM v2 program, including the derived NFT token
+  // account, the token programs and `evaluateEligibility`'s verdict on whether the position can
+  // be securitized as-is.
   app.get("/v1/positions/:wallet/onchain", async (c) => {
     if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
     try {
       const adapter = new DammV2Adapter(deps.connection);
       const positions = await adapter.walletPositionDetails(new PublicKey(c.req.param("wallet")));
-      return c.json({ positions });
+      return c.json({
+        positions: positions.map((position) => ({
+          ...position,
+          eligibility: evaluateEligibility({
+            unlocked: BigInt(position.unlockedLiquidity),
+            vested: BigInt(position.vestedLiquidity),
+            permanentLocked: BigInt(position.permanentLockedLiquidity),
+          }),
+        })),
+      });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "lookup failed" }, 400);
     }

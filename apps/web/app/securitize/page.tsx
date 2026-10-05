@@ -8,20 +8,6 @@ import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-function eligibility(position: {
-  unlockedLiquidity: string;
-  vestedLiquidity: string;
-  permanentLockedLiquidity: string;
-}): { eligible: boolean; reasons: string[] } {
-  const reasons: string[] = [];
-  if (BigInt(position.unlockedLiquidity) > 0n) reasons.push("has unlocked liquidity");
-  if (BigInt(position.vestedLiquidity) > 0n) reasons.push("has vested liquidity");
-  if (BigInt(position.permanentLockedLiquidity) <= 0n) {
-    reasons.push("no permanent-locked liquidity");
-  }
-  return { eligible: reasons.length === 0, reasons };
-}
-
 export default function SecuritizePage() {
   const wallet = useSolanaWallet();
   const demo = useQuery({ queryKey: ["demo"], queryFn: api.demo });
@@ -48,7 +34,7 @@ export default function SecuritizePage() {
     enabled: Boolean(fairValue),
   });
 
-  const check = position ? eligibility(position) : null;
+  const check = position?.eligibility ?? null;
   const [busy, setBusy] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
   const [result, setResult] = useState<SecuritizeResult | null>(null);
@@ -116,6 +102,7 @@ export default function SecuritizePage() {
         <input
           value={manual}
           onChange={(event) => setManual(event.target.value)}
+          aria-label="Wallet address to scan for positions"
           placeholder="or paste a wallet address to scan"
           className="min-w-[20rem] flex-1 rounded-lg border border-edge bg-panel px-4 py-2 font-mono text-sm outline-none focus:border-accent"
         />

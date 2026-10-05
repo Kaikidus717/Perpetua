@@ -23,5 +23,3 @@ export function buildScenarios(baseLambda: number): Scenario[] {
     volumeMultiplier: shape.volumeMultiplier,
   }));
 }
-
-export const SCENARIO_ORDER: Scenario["name"][] = ["bear", "base", "bull"];

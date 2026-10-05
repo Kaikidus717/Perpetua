@@ -15,6 +15,7 @@ scripts/out/
 .env
 .env.local
 .env.*.local
+.kilo/
 
 .DS_Store
 .idea/

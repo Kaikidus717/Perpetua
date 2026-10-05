@@ -25,8 +25,11 @@
 
 Accounts are keyed by the **position** address, so one position maps to one vault.
 
-Instructions: `init_config`, `create_vault`, `stake`, `unstake`, `unstake_no_claim`, `harvest`,
-`crank_claim`, `touch`, plus the admin pair `set_paused` and `set_risk_flags`.
+Instructions (9): `init_config`, `create_vault`, `stake`, `unstake`, `unstake_no_claim`, `harvest`,
+`crank_claim`, plus the admin pair `set_paused` and `set_risk_flags`.
+
+`instructions/touch.rs` is **not** an instruction despite the name — it holds the shared claim path
+(`touch`, `settle`, `ClaimAccounts`) that `crank_claim` and `harvest` both call.
 
 `set_paused(true)` gates **entry only** — `create_vault` and `stake`. Exits (`unstake`,
 `unstake_no_claim`, `harvest`, `crank_claim`) are never gated, so a compromised or absent admin

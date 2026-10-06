@@ -75,6 +75,8 @@ export function valuePosition(input: ValuationInput): ValuationResult {
     horizonDays: 365,
     floorUsd,
   }).reduce((sum, fee) => sum + fee, 0);
+  // Per share, so it can be compared against a per-share price.
+  const annualFeesPerShareUsd = (annualFeesUsd * input.liquidityShare) / config.shareSupply;
 
   return {
     modelVersion: MODEL_VERSION,
@@ -89,6 +91,6 @@ export function valuePosition(input: ValuationInput): ValuationResult {
     fairValuePerShareUsd: base.fairValuePerShareUsd,
     scenarios: valuations,
     riskFlags: computeRiskFlags(config.risk),
-    impliedAprAt: (priceUsd: number) => impliedApr(annualFeesUsd, input.liquidityShare, priceUsd),
+    impliedAprAt: (priceUsd: number) => impliedApr(annualFeesPerShareUsd, priceUsd),
   };
 }

@@ -107,11 +107,12 @@ export function paybackDays(
   return projectedFeesUsd.length;
 }
 
-export function impliedApr(
-  annualFeesUsd: number,
-  liquidityShare: number,
-  priceUsd: number,
-): number {
-  if (priceUsd <= 0) return Number.POSITIVE_INFINITY;
-  return (annualFeesUsd * liquidityShare) / priceUsd;
+/// Implied annual return, as a fraction. Both arguments are **per share**: what one share earns in a
+/// year, and what that share costs.
+///
+/// Passing position-wide fees against a per-share price overstates the rate by the share supply —
+/// at the default 1,000,000 shares that is a 1,000,000x error, e.g. 104.6% rendered as 104,579,020%.
+export function impliedApr(annualFeesPerShareUsd: number, pricePerShareUsd: number): number {
+  if (pricePerShareUsd <= 0) return Number.POSITIVE_INFINITY;
+  return annualFeesPerShareUsd / pricePerShareUsd;
 }

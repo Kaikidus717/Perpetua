@@ -91,7 +91,17 @@ describe("paybackDays", () => {
 });
 
 describe("impliedApr", () => {
-  it("is annual fees divided by price", () => {
-    expect(impliedApr(365, 1, 100)).toBeCloseTo(3.65, 9);
+  it("is annual fees per share divided by price per share", () => {
+    expect(impliedApr(3.65, 100)).toBeCloseTo(0.0365, 9);
+  });
+
+  it("is not off by the share supply", () => {
+    // $0.0211 of fees per share against a $0.0201 price is ~105%, not ~105 million percent. The old
+    // signature mixed position-wide fees with a per-share price and reported 104,579,020%.
+    expect(impliedApr(0.0211, 0.0201)).toBeCloseTo(1.0497, 3);
+  });
+
+  it("is infinite for a free share", () => {
+    expect(impliedApr(1, 0)).toBe(Number.POSITIVE_INFINITY);
   });
 });

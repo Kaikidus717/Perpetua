@@ -75,6 +75,22 @@ describe("valuePosition", () => {
     expect(apr).toBeGreaterThan(0);
   });
 
+  it("reports a plausible implied APR at fair value, not a share-supply-multiplied one", () => {
+    const result = valuePosition(input());
+    const apr = result.impliedAprAt(result.fairValuePerShareUsd);
+    expect(Number.isFinite(apr)).toBe(true);
+    expect(apr).toBeGreaterThan(0);
+    // The per-share/per-position mix-up reported ~104,579,020% for this shape of position. A real
+    // answer is a plain percentage, so anything above 1000% means the share supply slipped again.
+    expect(apr).toBeLessThan(10);
+  });
+
+  it("scales the implied APR inversely with the price paid", () => {
+    const result = valuePosition(input());
+    const price = result.fairValuePerShareUsd;
+    expect(result.impliedAprAt(price * 2)).toBeCloseTo(result.impliedAprAt(price) / 2, 9);
+  });
+
   it("prices a bull case above the base case", () => {
     const result = valuePosition(input());
     const bear = result.scenarios.find((s) => s.scenario.name === "bear");

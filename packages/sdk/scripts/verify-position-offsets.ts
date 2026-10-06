@@ -1,6 +1,6 @@
 import { CpAmm } from "@meteora-ag/cp-amm-sdk";
-import { resolveNetwork } from "@perpetua/shared";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
+import { createConnection } from "../src/rpc.js";
 
 // The offsets `programs/perpetua_vault/src/cpi.rs` uses to read the lock buckets.
 const UNLOCKED_OFFSET = 152;
@@ -18,8 +18,7 @@ function readU128(data: Uint8Array, offset: number): bigint {
 async function main(): Promise<void> {
   // The DAMM v2 program and its account layout are identical on every cluster, so a mainnet
   // position validates the offsets just as well as a devnet one and needs no funded wallet.
-  const network = resolveNetwork(process.env.CLUSTER ?? "mainnet-beta");
-  const connection = new Connection(process.env.RPC_URL ?? network.rpcUrl, "confirmed");
+  const connection = createConnection({ cluster: process.env.CLUSTER ?? "mainnet-beta" });
   const cpAmm = new CpAmm(connection);
 
   const explicit = process.env.POSITION;

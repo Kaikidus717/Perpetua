@@ -1,7 +1,7 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
+import { createConnection } from "../src/rpc.js";
 
 const PROGRAM_ID = new PublicKey("G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2");
-const RPC = process.env.RPC_URL ?? "https://api.devnet.solana.com";
 
 /// Config: 8 disc + admin 32 + treasury 32 + fee u16 + bump u8 + paused bool
 const CONFIG_LEN = 76;
@@ -45,12 +45,12 @@ const FLAGS = [
 ];
 
 async function main(): Promise<void> {
-  const connection = new Connection(RPC, "confirmed");
+  const connection = createConnection({ cluster: process.env.CLUSTER ?? "devnet" });
   const log = (line = "") => {
     console.log(line);
   };
 
-  log(`cluster rpc: ${RPC}`);
+  log(`cluster rpc: ${connection.rpcEndpoint}`);
 
   const program = await connection.getAccountInfo(PROGRAM_ID);
   log(

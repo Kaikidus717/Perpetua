@@ -1,13 +1,12 @@
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
 import { InMemoryStore, type Store } from "@perpetua/api";
-import { PerpetuaVaultClient } from "@perpetua/sdk";
+import { PerpetuaVaultClient, createConnection } from "@perpetua/sdk";
 import { resolveNetwork } from "@perpetua/shared";
-import { Connection, Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
+import { Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
 import { MeteoraDataApi } from "./dataApi.js";
 import { Indexer } from "./indexer.js";
 
 const network = resolveNetwork(process.env.CLUSTER);
-const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
 const dataApiUrl = process.env.METEORA_DATA_API ?? network.dlmmDataApi;
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -17,7 +16,7 @@ async function resolveStore(): Promise<Store> {
   return new DrizzleStore(createDb(databaseUrl).db);
 }
 
-const connection = new Connection(rpcUrl, "confirmed");
+const connection = createConnection({ cluster: process.env.CLUSTER });
 const wallet: Wallet = {
   publicKey: Keypair.generate().publicKey,
   payer: Keypair.generate(),

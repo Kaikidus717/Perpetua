@@ -1,19 +1,16 @@
 import { readFileSync } from "node:fs";
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
-import { PerpetuaVaultClient } from "@perpetua/sdk";
-import { resolveNetwork } from "@perpetua/shared";
-import { Connection, Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
+import { PerpetuaVaultClient, createConnection } from "@perpetua/sdk";
+import { Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
 import { Keeper } from "./keeper.js";
 import { RpcCrankPort } from "./rpcCrankPort.js";
 
-const network = resolveNetwork(process.env.CLUSTER);
-const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
 const keypairPath = process.env.KEYPAIR;
 if (!keypairPath) throw new Error("KEYPAIR env var is required (path to a solana keypair json)");
 
 const secret = Uint8Array.from(JSON.parse(readFileSync(keypairPath, "utf8")) as number[]);
 const keypair = Keypair.fromSecretKey(secret);
-const connection = new Connection(rpcUrl, "confirmed");
+const connection = createConnection({ cluster: process.env.CLUSTER });
 const wallet: Wallet = {
   publicKey: keypair.publicKey,
   payer: keypair,

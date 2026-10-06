@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { Keypair, PublicKey, Transaction, type VersionedTransaction } from "@solana/web3.js";
 import {
-  Connection,
-  Keypair,
-  PublicKey,
-  Transaction,
-  type VersionedTransaction,
-} from "@solana/web3.js";
-import { PerpetuaVaultClient, findConfigPda, findVaultPda } from "../src/index.js";
+  PerpetuaVaultClient,
+  createConnection,
+  findConfigPda,
+  findVaultPda,
+} from "../src/index.js";
 
 const REQUIRED = [
   "POSITION",
@@ -36,11 +35,10 @@ function loadKeypair(path: string): Keypair {
 async function main(): Promise<void> {
   for (const name of REQUIRED) env(name);
 
-  const rpcUrl = process.env.RPC_URL ?? "https://api.mainnet-beta.solana.com";
   const creator = loadKeypair(env("KEYPAIR"));
   const shareMint = Keypair.generate();
 
-  const connection = new Connection(rpcUrl, "confirmed");
+  const connection = createConnection({ cluster: process.env.CLUSTER });
   const wallet: Wallet = {
     publicKey: creator.publicKey,
     payer: creator,

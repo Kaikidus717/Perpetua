@@ -23,7 +23,7 @@ import {
   getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
 import {
-  Connection,
+  type Connection,
   Keypair,
   PublicKey,
   SystemProgram,
@@ -34,11 +34,11 @@ import {
 } from "@solana/web3.js";
 import BN from "bn.js";
 import { DammV2Adapter } from "../src/adapters/dammV2.js";
+import { createConnection } from "../src/rpc.js";
 import { PerpetuaVaultClient } from "../src/vault/client.js";
 import { findConfigPda, findStakePda, findVaultPda } from "../src/vault/pda.js";
 
 const network = resolveNetwork(process.env.CLUSTER ?? "devnet");
-const rpcUrl = process.env.RPC_URL ?? network.rpcUrl;
 const CP_AMM_PROGRAM = new PublicKey("cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG");
 const ASSOCIATED_TOKEN_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   if (!keypairPath) throw new Error("set KEYPAIR to a devnet keypair json path");
 
   const payer = loadKeypair(keypairPath);
-  const connection = new Connection(rpcUrl, "confirmed");
+  const connection = createConnection({ cluster: process.env.CLUSTER ?? "devnet" });
   const cpAmm = new CpAmm(connection);
   const adapter = new DammV2Adapter(connection);
   const provider = new AnchorProvider(connection, readonlyWallet(payer), {

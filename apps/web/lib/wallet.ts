@@ -13,8 +13,30 @@ export interface SolanaProvider {
   removeListener?(event: string, handler: () => void): void;
 }
 
+/// What Solana wallets put on `window`. They all expose the same provider shape; they just disagree
+/// about where to put it. `window.solana` is the de-facto standard, so it wins when present, and the
+/// named slots below cover the cases where a different extension claimed it first.
+interface WalletGlobals {
+  solana?: SolanaProvider;
+  phantom?: { solana?: SolanaProvider };
+  solflare?: SolanaProvider;
+  backpack?: SolanaProvider;
+  glow?: SolanaProvider;
+}
+
+/// Names to show a visitor who has no Solana wallet installed. Ethereum-only wallets cannot fill
+/// this role: they hold no Solana keys and cannot sign a Solana transaction.
+export const SUPPORTED_WALLETS = "Phantom, Solflare, Backpack or Glow";
+
 export function solanaProvider(): SolanaProvider | undefined {
-  return (globalThis as unknown as { solana?: SolanaProvider }).solana;
+  const wallets = globalThis as unknown as WalletGlobals;
+  return (
+    wallets.solana ??
+    wallets.phantom?.solana ??
+    wallets.solflare ??
+    wallets.backpack ??
+    wallets.glow
+  );
 }
 
 function provider(): SolanaProvider | undefined {
@@ -46,7 +68,7 @@ export function useSolanaWallet() {
   const connect = useCallback(async () => {
     const detected = provider();
     if (!detected) {
-      setError("No Solana wallet detected in this browser.");
+      setError(`No Solana wallet found. Install ${SUPPORTED_WALLETS}, then reload.`);
       return;
     }
     try {

@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { compactUsd, explorerUrl, shortAddress, usd } from "@/lib/format";
 import { type SecuritizeResult, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT_MONO, LINK, PAGE } from "@/lib/ui";
-import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -74,7 +74,7 @@ export default function SecuritizePage() {
     <div className={PAGE}>
       <PageHeader
         title="Create shares"
-        description="Turn a locked DAMM v2 position into 1,000,000 tradable shares. The position NFT moves into a vault, the share tokens are minted to you, and every fee the position earns then belongs to whoever holds the shares."
+        description="Turn a locked pool position into 1,000,000 tradable shares. A vault takes custody of the position so it can never be pulled out, the shares land in your wallet, and every fee the pool keeps earning then belongs to whoever holds them."
       />
 
       <section className="flex flex-wrap items-center gap-3">
@@ -102,7 +102,7 @@ export default function SecuritizePage() {
       {wallet.error ? <p className="text-sm text-warn">{wallet.error}</p> : null}
       {!wallet.available && !manual ? (
         <p className="text-sm text-muted">
-          No wallet extension detected. Paste an address above to scan it.
+          No wallet found. Paste an address above, or install {SUPPORTED_WALLETS}.
         </p>
       ) : null}
 
@@ -163,7 +163,8 @@ export default function SecuritizePage() {
           {result ? (
             <div className={`${CARD_MUTED} space-y-1 p-4 text-sm`}>
               <p className="text-ink">Vault created.</p>
-              <p className="font-mono text-xs text-muted">share mint {result.shareMint}</p>
+              <p className="text-ink">Your share token</p>
+              <p className="font-mono text-xs text-muted">{result.shareMint}</p>
               <a
                 href={`https://solscan.io/tx/${result.signature}?cluster=devnet`}
                 target="_blank"
@@ -201,24 +202,17 @@ export default function SecuritizePage() {
           <Section title="What happens next">
             <ol className="list-decimal space-y-2 pl-5 text-sm text-ink">
               <li>
-                <code className="font-mono text-xs">create_vault</code> hands the position NFT to
-                the vault PDA, mints 1,000,000 share tokens to you, and revokes the mint authority.
+                Your locked position is handed to a vault — a contract that holds it and can never
+                give it back, not even to you. That is what stops the fees from being taken away.
               </li>
               <li>
-                <code className="font-mono text-xs">DLMM pool + one-sided ask ladder</code> seeds
-                the sale around fair value.
+                1,000,000 shares are created and sent to your wallet. Keep them, or sell them on.
               </li>
               <li>
-                <code className="font-mono text-xs">stake</code> /{" "}
-                <code className="font-mono text-xs">harvest</code> lets holders stake shares and
-                pull fees at any time.
+                Whoever holds a share collects that share's slice of the fees, for as long as the
+                position keeps earning. Claim whenever you like.
               </li>
             </ol>
-            <p className="text-xs text-muted">
-              Signing runs through{" "}
-              <code className="font-mono">packages/sdk/scripts/create-vault.ts</code>, so keys never
-              leave the operator machine.
-            </p>
           </Section>
         </>
       ) : null}

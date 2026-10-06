@@ -36,10 +36,17 @@ Program ids used across the repo:
 
 ### Data APIs
 
-- `packages/sdk/src/data/meteoraDataApi.ts` implements `DataApiPort` over HTTP; the indexer and the
-  API both construct it. Endpoint paths are
-  `/pools/:pool/daily?days=` and `/wallets/:wallet/positions`, and the daily payload is normalised
-  from `{ pool, data: [{ day, feesUsd, volumeUsd, liquidityUsd }] }`.
+- `packages/sdk/src/data/meteoraDataApi.ts` implements `DataApiPort` over HTTP against Meteora's
+  **DAMM v2** data API (`https://damm-v2.datapi.meteora.ag`); the indexer and the API both construct
+  it. The fee series comes from `GET /pools/{address}/volume/history?timeframe=24h&start_time=&end_time=`,
+  where every bucket carries `fees`, `volume` and `protocol_fees`; `GET /pools/{address}` supplies the
+  pool's current `tvl` and its `created_at`.
+- Buckets are dropped in two cases, both of which would distort the decay fit: those that predate the
+  pool (those days are not zero-fee days, they are not days), and the bucket still in flight (its fees
+  are a partial day).
+- **The data API has no wallet endpoint.** `DataApiPort` therefore has no `walletPositions`, and
+  `GET /v1/positions/:wallet` reads from the DAMM v2 program through `DammV2Adapter` instead — as does
+  `/v1/positions/:wallet/onchain`.
 
 ## Verified against the shipped SDKs
 
@@ -66,7 +73,10 @@ taken from that artifact, not from guesswork:
    SDK (`DammV2Adapter.claimAccountsFor`) and validated by cp-amm's own `relations` constraints.
 5. **Program IDs are identical on devnet and mainnet** — confirmed in the DAMM v2, DLMM and DBC SDK
    docs and `packages/shared/src/constants.ts`.
-6. **DAMM v2 data API** — `https://damm-v2.datapi.meteora.ag/pools?page=1&page_size=20` (documented).
+6. **DAMM v2 data API** — base `https://damm-v2.datapi.meteora.ag`. Confirmed live:
+   `GET /pools`, `GET /pools/{address}` and `GET /pools/{address}/volume/history?timeframe=24h`.
+   The earlier `/pools/:pool/daily` path never existed — it 404s on both this API and the DLMM one,
+   which is why every valuation used to fall back to invented numbers.
 7. **Anchor / SDK compatibility** — the program compiles against `anchor-lang 0.32.2` with
    `solana-program 2.3`; `cargo check` and `cargo test -p perpetua_vault` are green.
 8. **The position NFT account is a cp-amm PDA, not an associated token account.** It is

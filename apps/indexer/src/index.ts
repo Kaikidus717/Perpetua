@@ -7,7 +7,7 @@ import { Keypair, type Transaction, type VersionedTransaction } from "@solana/we
 import { Indexer } from "./indexer.js";
 
 const network = resolveNetwork(process.env.CLUSTER);
-const dataApiUrl = process.env.METEORA_DATA_API ?? network.dlmmDataApi;
+const dataApiUrl = process.env.METEORA_DATA_API ?? network.dammV2DataApi;
 const databaseUrl = process.env.DATABASE_URL;
 
 async function resolveStore(): Promise<Store> {

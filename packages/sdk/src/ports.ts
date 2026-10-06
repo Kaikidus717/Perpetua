@@ -1,9 +1,12 @@
-import type { PoolDailySeries, PositionSummary } from "@perpetua/shared";
+import type { PoolDailySeries } from "@perpetua/shared";
 import type { LadderPlan } from "./sale/ladder.js";
 
+/// Read-only pool history.
+///
+/// Positions are deliberately *not* part of this port: Meteora's data API has no wallet endpoint, so
+/// they are read from the DAMM v2 program itself (see `DammV2Adapter`).
 export interface DataApiPort {
   poolDaily(pool: string, days: number): Promise<PoolDailySeries>;
-  walletPositions(wallet: string): Promise<PositionSummary[]>;
 }
 
 export interface DlmmPreset {

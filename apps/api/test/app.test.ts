@@ -1,16 +1,15 @@
 import { StaticDataApi } from "@perpetua/sdk/data";
-import type { PoolDailySeries, PositionSummary } from "@perpetua/shared";
+import type { PoolDailySeries } from "@perpetua/shared";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { InMemoryStore } from "../src/store/memory.js";
 
 /// A fixed series so these tests never touch the network.
 ///
-/// This lives in the test file deliberately. The API ship no data of its own — `server.ts` points at
-/// Meteora's data API — so a fixture here is a test input, not something a running server can serve.
+/// This lives in the test file deliberately. The API ships no data of its own — `server.ts` points at
+/// Meteora's DAMM v2 data API — so a fixture here is a test input, not something a running server can
+/// serve.
 const POOL = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
-const WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
-const POSITION = "8sbCkYzQHNhcn3sRJuAVNXvVQdEoaq1eLE8b2EsqRsBp";
 
 function fixedSeries(): PoolDailySeries {
   const days = Array.from({ length: 30 }, (_, index) => index + 1);
@@ -23,28 +22,10 @@ function fixedSeries(): PoolDailySeries {
   };
 }
 
-function fixedPositions(): PositionSummary[] {
-  return [
-    {
-      address: POSITION,
-      pool: POOL,
-      nftMint: "ELWTtHkjB8yH2pHMFA6L6o7EQGXn6UxVh2c5vS4cJ4FN",
-      tokenAMint: "So11111111111111111111111111111111111111112",
-      tokenBMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      unlockedLiquidity: "0",
-      vestedLiquidity: "0",
-      permanentLockedLiquidity: "1250000000",
-    },
-  ];
-}
-
 function app() {
   return createApp({
     store: new InMemoryStore(),
-    dataApi: new StaticDataApi(
-      new Map([[POOL, fixedSeries()]]),
-      new Map([[WALLET, fixedPositions()]]),
-    ),
+    dataApi: new StaticDataApi(new Map([[POOL, fixedSeries()]])),
   });
 }
 
@@ -63,6 +44,33 @@ describe("perpetua api", () => {
     };
     expect(body.valuation.fairValueUsd).toBeGreaterThan(0);
     expect(body.valuation.scenarios).toHaveLength(3);
+  });
+
+  it("flags a pool that is younger than the observed window", async () => {
+    // Three days of history, under the MIN_POOL_HISTORY_DAYS line.
+    const days = Array.from({ length: 3 }, (_, index) => index + 1);
+    const short = createApp({
+      store: new InMemoryStore(),
+      dataApi: new StaticDataApi(
+        new Map([
+          [
+            POOL,
+            {
+              pool: POOL,
+              days,
+              feesUsd: days.map(() => 100),
+              volumeUsd: days.map(() => 1_000),
+              liquidityUsd: days.map(() => 500_000),
+            },
+          ],
+        ]),
+      ),
+    });
+
+    const res = await short.request(`/v1/pools/${POOL}/yield`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { valuation: { riskFlags: string[] } };
+    expect(body.valuation.riskFlags).toContain("pool_too_young");
   });
 
   it("rejects a valuation request without a resolvable pool", async () => {
@@ -105,6 +113,20 @@ describe("perpetua api", () => {
     expect(body.validation.valid).toBe(true);
   });
 
+  it("refuses to price a pool with no complete day of history", async () => {
+    const young = createApp({
+      store: new InMemoryStore(),
+      dataApi: new StaticDataApi(
+        new Map([[POOL, { pool: POOL, days: [], feesUsd: [], volumeUsd: [], liquidityUsd: [] }]]),
+      ),
+    });
+
+    const res = await young.request(`/v1/pools/${POOL}/yield`);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/no complete day/);
+  });
+
   it("reports a failing data api instead of inventing a fee series", async () => {
     const failing = createApp({
       store: new InMemoryStore(),
@@ -112,7 +134,6 @@ describe("perpetua api", () => {
         poolDaily: async () => {
           throw new Error("data api unreachable");
         },
-        walletPositions: async () => [],
       },
     });
 
@@ -124,11 +145,10 @@ describe("perpetua api", () => {
     expect(series.status).toBe(502);
   });
 
-  it("lists a wallet's indexed positions", async () => {
-    const res = await app().request(`/v1/positions/${WALLET}`);
-    const body = (await res.json()) as { positions: Array<{ permanentLockedLiquidity: string }> };
-    expect(body.positions).toHaveLength(1);
-    expect(body.positions[0]?.permanentLockedLiquidity).toBe("1250000000");
+  it("says so when positions are asked for without an RPC connection", async () => {
+    // Positions come from the DAMM v2 program, not from a data index.
+    const res = await app().request("/v1/positions/9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
+    expect(res.status).toBe(503);
   });
 
   it("404s on an unknown vault", async () => {

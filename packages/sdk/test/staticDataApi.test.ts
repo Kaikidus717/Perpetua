@@ -18,9 +18,8 @@ describe("StaticDataApi", () => {
     expect(window.days).toEqual([6, 7, 8]);
   });
 
-  it("throws for unknown pools and returns empty position lists", async () => {
+  it("throws for an unknown pool", async () => {
     const api = new StaticDataApi(new Map());
     await expect(api.poolDaily("missing", 7)).rejects.toThrow(/unknown pool/);
-    expect(await api.walletPositions("wallet")).toEqual([]);
   });
 });

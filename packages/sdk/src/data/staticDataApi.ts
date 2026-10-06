@@ -1,4 +1,4 @@
-import type { PoolDailySeries, PositionSummary } from "@perpetua/shared";
+import type { PoolDailySeries } from "@perpetua/shared";
 import type { DataApiPort } from "../ports.js";
 
 function tail<T>(values: T[], days: number): T[] {
@@ -6,10 +6,7 @@ function tail<T>(values: T[], days: number): T[] {
 }
 
 export class StaticDataApi implements DataApiPort {
-  constructor(
-    private readonly pools: Map<string, PoolDailySeries>,
-    private readonly positions: Map<string, PositionSummary[]> = new Map(),
-  ) {}
+  constructor(private readonly pools: Map<string, PoolDailySeries>) {}
 
   async poolDaily(pool: string, days: number): Promise<PoolDailySeries> {
     const series = this.pools.get(pool);
@@ -21,9 +18,5 @@ export class StaticDataApi implements DataApiPort {
       volumeUsd: tail(series.volumeUsd, days),
       liquidityUsd: tail(series.liquidityUsd, days),
     };
-  }
-
-  async walletPositions(wallet: string): Promise<PositionSummary[]> {
-    return this.positions.get(wallet) ?? [];
   }
 }

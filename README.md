@@ -8,7 +8,7 @@ the chain hashes **byte-for-byte** to the artifact the tests ran against.
 
 | | |
 |---|---|
-| TypeScript | **149 tests** · `biome check` clean · `tsc` clean · `next build` green |
+| TypeScript | **154 tests** · `biome check` clean · `tsc` clean · `next build` green |
 | Rust | **26 tests** · `cargo clippy --all-targets -D warnings` clean |
 | Program | 9 instructions · 448,248 bytes · SBF verifier clean · deployed on devnet |
 | Shape | 5 workspace packages · 4 apps · 1 web UI · 1 MCP server |
@@ -218,7 +218,7 @@ Copy [.env.example](.env.example) to `.env`. Every value has a working default f
 | `CLUSTER` | `devnet` | api (`resolveNetwork`) |
 | `DATABASE_URL` | empty → in-memory | api |
 | `CORS_ORIGINS` | local web origins in dev | api |
-| `METEORA_DATA_API` | the Meteora data API | indexer |
+| `METEORA_DATA_API` | `https://damm-v2.datapi.meteora.ag` | api, indexer |
 | `KEYPAIR` | — | keeper, SDK scripts |
 | `CRANK_THRESHOLD_USD` | `0` | keeper |
 | `CRANK_INTERVAL_MS` | `120000` | keeper |
@@ -560,7 +560,7 @@ against **live devnet**, not just the local harness — see [Verified on devnet]
 | Bytecode identity | `solana program dump` hashes **byte-for-byte** to `target/deploy/perpetua_vault.so` (`sha256 30796ad88425eec7…b7aca6a472`) — what is live is what was tested |
 | Position-lock offsets | verified against **11 live on-chain DAMM v2 positions**, one of them permanently locked |
 | Rust | `cargo test --workspace` → **26 pass**; `cargo clippy --workspace --all-targets -- -D warnings` clean |
-| TypeScript | **149 tests** across 8 packages; `biome check` clean; `tsc` clean; `next build` green |
+| TypeScript | **154 tests** across 8 packages; `biome check` clean; `tsc` clean; `next build` green |
 | `@perpetua/web` | 6 pages, plus `loading.tsx`, `error.tsx`, `not-found.tsx` and `global-error.tsx` boundaries |
 | Meteora SDKs | `@meteora-ag/cp-amm-sdk`, `@meteora-ag/dlmm` and `-dynamic-bonding-curve-sdk` are wired through real adapters, not stubs |
 | LiteSVM suite | `tests/litesvm`; loads the compiled artifact when `cargo build-sbf` is available and skips cleanly otherwise |
@@ -572,12 +572,12 @@ against **live devnet**, not just the local harness — see [Verified on devnet]
 | `@perpetua/valuation` | 46 |
 | `@perpetua/shared` | 13 |
 | `@perpetua/mcp` | 30 |
-| `@perpetua/sdk` | 32 |
-| `@perpetua/api` | 10 |
+| `@perpetua/sdk` | 35 |
+| `@perpetua/api` | 12 |
 | `@perpetua/stock-kit` | 9 |
 | `@perpetua/indexer` | 4 |
 | `@perpetua/keeper` | 5 |
-| **TypeScript total** | **149** (turbo: 12 tasks) |
+| **TypeScript total** | **154** (turbo: 12 tasks) |
 | `perpetua_vault` — Rust unit tests | 17 |
 | `perpetua_vault_litesvm` — boot + flow | 9 |
 | **Rust total** | **26** |
@@ -678,7 +678,7 @@ Run from the repo root unless noted.
 ## Testing
 
 ```bash
-pnpm test                                        # 149 TypeScript tests
+pnpm test                                        # 154 TypeScript tests
 pnpm lint && pnpm typecheck                      # biome + tsc
 cargo test --workspace                           # 26 Rust tests
 cargo clippy --workspace --all-targets -- -D warnings

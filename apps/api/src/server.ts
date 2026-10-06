@@ -26,7 +26,7 @@ const store = await resolveStore();
 // Fee history comes from Meteora's data API and nowhere else. There is no bundled or generated
 // series behind it: if this endpoint is unreachable the request errors and the UI shows the error,
 // rather than a chart that looks live and is not.
-const dataApiUrl = process.env.METEORA_DATA_API ?? network.dlmmDataApi;
+const dataApiUrl = process.env.METEORA_DATA_API ?? network.dammV2DataApi;
 const app = createApp({
   store,
   dataApi: new MeteoraDataApi({ baseUrl: dataApiUrl }),

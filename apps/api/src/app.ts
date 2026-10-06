@@ -134,9 +134,17 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ events });
   });
 
+  // Read from the DAMM v2 program: Meteora's data API has no wallet endpoint, and the chain is the
+  // authority on which positions exist anyway.
   app.get("/v1/positions/:wallet", async (c) => {
-    const positions = await deps.dataApi.walletPositions(c.req.param("wallet"));
-    return c.json({ positions });
+    if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    try {
+      const adapter = new DammV2Adapter(deps.connection);
+      const positions = await adapter.walletPositions(new PublicKey(c.req.param("wallet")));
+      return c.json({ positions });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "lookup failed" }, 400);
+    }
   });
 
   // On-chain position detail straight from the DAMM v2 program, including the derived NFT token
@@ -174,7 +182,8 @@ export function createApp(deps: AppDeps): Hono {
       const result = await pricePool(deps, pool, parsed.data);
       return c.json({ position, valuation: serialize(result) });
     } catch (error) {
-      return c.json({ error: dataApiError(error) }, 502);
+      const { status, body } = priceError(error);
+      return c.json(body, status);
     }
   });
 
@@ -203,7 +212,8 @@ export function createApp(deps: AppDeps): Hono {
       const result = await pricePool(deps, c.req.param("pool"), parsed.data);
       return c.json({ valuation: serialize(result) });
     } catch (error) {
-      return c.json({ error: dataApiError(error) }, 502);
+      const { status, body } = priceError(error);
+      return c.json(body, status);
     }
   });
 
@@ -295,12 +305,26 @@ function dataApiError(error: unknown): string {
   return error instanceof Error ? error.message : "data api request failed";
 }
 
+/// A pool the data API knows about, but which has not completed a single day yet. There is no fee
+/// stream to price, and answering "0" would read as "worthless" rather than "not yet".
+class NoHistoryError extends Error {}
+
+/// 422 for a pool we cannot price yet, 502 for an upstream that let us down. They are different
+/// things and the caller should be able to tell them apart.
+function priceError(error: unknown): { status: 422 | 502; body: { error: string } } {
+  if (error instanceof NoHistoryError) return { status: 422, body: { error: error.message } };
+  return { status: 502, body: { error: dataApiError(error) } };
+}
+
 async function pricePool(
   deps: AppDeps,
   pool: string,
   query: z.infer<typeof valuationQuery>,
 ): Promise<ValuationResult> {
   const series = await deps.dataApi.poolDaily(pool, query.days);
+  if (series.days.length === 0) {
+    throw new NoHistoryError(`${pool} has no complete day of fee history yet`);
+  }
   const risk = (await deps.store.getPoolRisk(pool)) ?? DEFAULT_RISK;
   const input: ValuationInput = {
     pool,
@@ -309,7 +333,13 @@ async function pricePool(
     discountRateAnnual: query.discountRate,
     horizonDays: query.horizonDays,
     series,
-    risk: { ...risk, liquidityUsd: risk.liquidityUsd || (series.liquidityUsd.at(-1) ?? 0) },
+    risk: {
+      ...risk,
+      // However old the stored record claims the pool is, it cannot be older than the history we
+      // actually observed — otherwise a two-day-old pool is priced as though it were a month old.
+      poolAgeDays: Math.min(risk.poolAgeDays, series.days.length),
+      liquidityUsd: risk.liquidityUsd || (series.liquidityUsd.at(-1) ?? 0),
+    },
   };
   return valuePosition(input);
 }

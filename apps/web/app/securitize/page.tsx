@@ -1,9 +1,12 @@
 "use client";
 
+import { PageHeader } from "@/components/PageHeader";
+import { Section } from "@/components/Section";
 import { Stat } from "@/components/Stat";
 import { api } from "@/lib/api";
 import { compactUsd, explorerUrl, shortAddress, usd } from "@/lib/format";
 import { type SecuritizeResult, securitize } from "@/lib/tx";
+import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT_MONO, LINK, PAGE } from "@/lib/ui";
 import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -69,33 +72,22 @@ export default function SecuritizePage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">Securitize a position</h1>
-        <p className="max-w-3xl text-slate-400">
-          Hand a permanently locked DAMM v2 position NFT to the vault PDA and mint a fixed supply of
-          fee-share tokens against its fee stream.
-        </p>
-      </section>
+    <div className={PAGE}>
+      <PageHeader
+        title="Create shares"
+        description="Turn a locked DAMM v2 position into 1,000,000 tradable shares. The position NFT moves into a vault, the share tokens are minted to you, and every fee the position earns then belongs to whoever holds the shares."
+      />
 
       <section className="flex flex-wrap items-center gap-3">
         {wallet.address ? (
           <>
-            <span className="font-mono text-sm text-accent">{shortAddress(wallet.address)}</span>
-            <button
-              type="button"
-              onClick={() => void wallet.disconnect()}
-              className="rounded-lg border border-edge px-4 py-2 text-sm"
-            >
+            <span className="font-mono text-sm text-ink">{shortAddress(wallet.address)}</span>
+            <button type="button" onClick={() => void wallet.disconnect()} className={BUTTON}>
               Disconnect
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => void wallet.connect()}
-            className="rounded-lg border border-accent/40 bg-accent/10 px-5 py-2 text-sm font-medium text-accent"
-          >
+          <button type="button" onClick={() => void wallet.connect()} className={BUTTON_PRIMARY}>
             Connect wallet
           </button>
         )}
@@ -104,57 +96,57 @@ export default function SecuritizePage() {
           onChange={(event) => setManual(event.target.value)}
           aria-label="Wallet address to scan for positions"
           placeholder="or paste a wallet address to scan"
-          className="min-w-[20rem] flex-1 rounded-lg border border-edge bg-panel px-4 py-2 font-mono text-sm outline-none focus:border-accent"
+          className={`${INPUT_MONO} min-w-[20rem] flex-1`}
         />
       </section>
 
-      {wallet.error ? <p className="text-sm text-amber-300">{wallet.error}</p> : null}
+      {wallet.error ? <p className="text-sm text-warn">{wallet.error}</p> : null}
       {!wallet.available && !manual ? (
-        <p className="text-sm text-slate-500">No wallet detected — scanning the demo wallet.</p>
+        <p className="text-sm text-muted">No wallet detected — scanning the demo wallet.</p>
       ) : null}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Eligible positions</h2>
-        {positions.isPending && target ? <p className="text-sm text-slate-400">scanning…</p> : null}
+      <Section
+        title="Positions found"
+        description="Only a position that is permanently locked can back shares."
+      >
+        {positions.isPending && target ? <p className="text-sm text-muted">Scanning…</p> : null}
         {positions.data && positions.data.positions.length === 0 ? (
-          <p className="text-sm text-slate-400">No DAMM v2 positions found for this wallet.</p>
+          <p className="text-sm text-muted">No DAMM v2 positions found for this wallet.</p>
         ) : null}
         {position ? (
-          <div className="space-y-3 rounded-lg border border-edge bg-panel p-5">
+          <div className={`${CARD} space-y-4 p-5`}>
             <a
               href={explorerUrl(position.address)}
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-sm text-accent"
+              className={`break-all font-mono text-sm ${LINK}`}
             >
               {position.address}
             </a>
             <div className="grid gap-3 text-sm sm:grid-cols-3">
               <div>
-                <div className="text-xs uppercase text-slate-400">Unlocked</div>
-                <div>{position.unlockedLiquidity}</div>
+                <div className="text-xs text-muted">Unlocked</div>
+                <div className="tnum mt-0.5 text-ink">{position.unlockedLiquidity}</div>
               </div>
               <div>
-                <div className="text-xs uppercase text-slate-400">Vested</div>
-                <div>{position.vestedLiquidity}</div>
+                <div className="text-xs text-muted">Vested</div>
+                <div className="tnum mt-0.5 text-ink">{position.vestedLiquidity}</div>
               </div>
               <div>
-                <div className="text-xs uppercase text-slate-400">Permanent lock</div>
-                <div>{position.permanentLockedLiquidity}</div>
+                <div className="text-xs text-muted">Permanent lock</div>
+                <div className="tnum mt-0.5 text-ink">{position.permanentLockedLiquidity}</div>
               </div>
             </div>
-            <div className="text-sm">
-              {check?.eligible ? (
-                <span className="text-accent">eligible for securitization</span>
-              ) : (
-                <span className="text-amber-300">
-                  not eligible: {check?.reasons.join(", ")} — split the locked part first
-                </span>
-              )}
-            </div>
+            {check?.eligible ? (
+              <p className="text-sm text-ink">Eligible for securitization.</p>
+            ) : (
+              <p className="text-sm text-warn">
+                Not eligible: {check?.reasons.join(", ")} — split the locked part first.
+              </p>
+            )}
           </div>
         ) : null}
-      </section>
+      </Section>
 
       {position ? (
         <section className="space-y-3">
@@ -162,20 +154,20 @@ export default function SecuritizePage() {
             type="button"
             onClick={() => void runSecuritize()}
             disabled={busy || !check?.eligible}
-            className="rounded-lg border border-accent/40 bg-accent/10 px-5 py-2.5 text-sm font-medium text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className={BUTTON_PRIMARY}
           >
-            {busy ? "waiting for signature…" : "Securitize position"}
+            {busy ? "Waiting for signature…" : "Create shares"}
           </button>
-          {txError ? <p className="text-sm text-amber-300">{txError}</p> : null}
+          {txError ? <p className="text-sm text-warn">{txError}</p> : null}
           {result ? (
-            <div className="space-y-1 rounded-lg border border-accent/40 bg-accent/5 p-4 text-sm">
-              <p className="text-accent">vault created</p>
-              <p className="font-mono text-xs text-slate-400">share mint {result.shareMint}</p>
+            <div className={`${CARD_MUTED} space-y-1 p-4 text-sm`}>
+              <p className="text-ink">Vault created.</p>
+              <p className="font-mono text-xs text-muted">share mint {result.shareMint}</p>
               <a
                 href={`https://solscan.io/tx/${result.signature}?cluster=devnet`}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-xs text-accent"
+                className={`font-mono text-xs ${LINK}`}
               >
                 {shortAddress(result.signature)} ↗
               </a>
@@ -205,29 +197,28 @@ export default function SecuritizePage() {
             />
           </section>
 
-          <section className="space-y-2 rounded-lg border border-edge bg-panel p-5 text-sm text-slate-300">
-            <h2 className="text-lg font-semibold text-slate-100">Next transactions</h2>
-            <ol className="list-decimal space-y-1 pl-5">
+          <Section title="What happens next">
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-ink">
               <li>
-                <code className="font-mono text-xs">create_vault</code> — hands the position NFT to
-                the vault PDA, mints 1,000,000 fee-share tokens to you, revokes the mint authority.
+                <code className="font-mono text-xs">create_vault</code> hands the position NFT to
+                the vault PDA, mints 1,000,000 share tokens to you, and revokes the mint authority.
               </li>
               <li>
-                <code className="font-mono text-xs">DLMM pool + one-sided ask ladder</code> — seeds
+                <code className="font-mono text-xs">DLMM pool + one-sided ask ladder</code> seeds
                 the sale around fair value.
               </li>
               <li>
                 <code className="font-mono text-xs">stake</code> /{" "}
-                <code className="font-mono text-xs">harvest</code> — holders stake shares and pull
-                real fees any time.
+                <code className="font-mono text-xs">harvest</code> lets holders stake shares and
+                pull fees at any time.
               </li>
             </ol>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted">
               Signing runs through{" "}
-              <code className="font-mono">packages/sdk/scripts/create-vault.ts</code> so keys never
+              <code className="font-mono">packages/sdk/scripts/create-vault.ts</code>, so keys never
               leave the operator machine.
             </p>
-          </section>
+          </Section>
         </>
       ) : null}
     </div>

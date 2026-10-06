@@ -1,6 +1,7 @@
 "use client";
 
 import { crankClaim, harvestFees, stakeShares, unstakeShares } from "@/lib/tx";
+import { BUTTON, BUTTON_PRIMARY, CARD } from "@/lib/ui";
 import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useState } from "react";
 
@@ -35,11 +36,12 @@ export function VaultActions({ vault }: { vault: string }) {
   })();
 
   return (
-    <section className="space-y-3 rounded-lg border border-edge bg-panel p-5">
-      <h2 className="text-lg font-semibold">Stake, harvest and crank</h2>
+    <section className={`${CARD} space-y-4 p-5`}>
+      <h2 className="text-base font-semibold text-ink">Stake, harvest and crank</h2>
       {!ready ? (
-        <p className="text-sm text-slate-400">
-          Connect a Solana wallet (Phantom, Solflare, Backpack) from the Securitize page to sign.
+        <p className="text-sm text-muted">
+          Connect a Solana wallet (Phantom, Solflare, Backpack) on the Create shares page to sign
+          these.
         </p>
       ) : null}
 
@@ -48,7 +50,7 @@ export function VaultActions({ vault }: { vault: string }) {
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
           placeholder="share amount (base units)"
-          className="min-w-[18rem] rounded-lg border border-edge bg-ink px-3 py-2 font-mono text-sm outline-none focus:border-accent"
+          className="min-w-[18rem] flex-1 rounded-md border border-line bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none placeholder:text-muted focus:border-ink"
         />
         <button
           type="button"
@@ -58,7 +60,7 @@ export function VaultActions({ vault }: { vault: string }) {
               void run("stake", () => stakeShares(activeProvider, vault, amountValue));
             }
           }}
-          className="rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm text-accent disabled:opacity-40"
+          className={BUTTON_PRIMARY}
         >
           Stake
         </button>
@@ -70,7 +72,7 @@ export function VaultActions({ vault }: { vault: string }) {
               void run("unstake", () => unstakeShares(activeProvider, vault, amountValue));
             }
           }}
-          className="rounded-lg border border-edge px-4 py-2 text-sm disabled:opacity-40"
+          className={BUTTON}
         >
           Unstake
         </button>
@@ -80,7 +82,7 @@ export function VaultActions({ vault }: { vault: string }) {
           onClick={() => {
             if (activeProvider) void run("harvest", () => harvestFees(activeProvider, vault));
           }}
-          className="rounded-lg border border-edge px-4 py-2 text-sm disabled:opacity-40"
+          className={BUTTON}
         >
           Harvest fees
         </button>
@@ -90,14 +92,14 @@ export function VaultActions({ vault }: { vault: string }) {
           onClick={() => {
             if (activeProvider) void run("crank", () => crankClaim(activeProvider, vault));
           }}
-          className="rounded-lg border border-edge px-4 py-2 text-sm disabled:opacity-40"
+          className={BUTTON}
         >
           Crank claim
         </button>
       </div>
 
-      {busy ? <p className="text-sm text-slate-400">{busy}…</p> : null}
-      {message ? <p className="break-all font-mono text-xs text-slate-400">{message}</p> : null}
+      {busy ? <p className="text-sm text-muted">{busy}…</p> : null}
+      {message ? <p className="break-all font-mono text-xs text-muted">{message}</p> : null}
     </section>
   );
 }

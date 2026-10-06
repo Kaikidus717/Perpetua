@@ -1,27 +1,48 @@
-import Link from "next/link";
+"use client";
 
+import { CONTAINER } from "@/lib/ui";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+/// Plain nouns a first-time visitor can guess at. The old labels were internal project jargon
+/// ("Explore", "Terminal", "Securitize", "KPI").
 const LINKS = [
-  { href: "/", label: "Explore" },
-  { href: "/terminal", label: "Terminal" },
-  { href: "/securitize", label: "Securitize" },
-  { href: "/launch", label: "Launch" },
-  { href: "/kpi", label: "KPI" },
+  { href: "/", label: "Vaults" },
+  { href: "/terminal", label: "Pricing" },
+  { href: "/securitize", label: "Create shares" },
+  { href: "/launch", label: "Launch plan" },
+  { href: "/kpi", label: "Stats" },
 ];
 
 export function Header() {
+  const pathname = usePathname();
+
   return (
-    <header className="border-b border-edge bg-panel/60 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="flex items-baseline gap-2">
-          <span className="text-lg font-semibold tracking-tight">Perpetua</span>
-          <span className="text-xs text-slate-400">fee-rights exchange</span>
+    <header className="border-b border-line bg-canvas">
+      <div className={`${CONTAINER} flex min-h-16 flex-wrap items-center justify-between gap-x-6`}>
+        <Link href="/" className="flex items-baseline gap-2 py-4">
+          <span className="text-[15px] font-semibold tracking-tight text-ink">Perpetua</span>
+          <span className="hidden text-xs text-muted sm:inline">pool fee shares</span>
         </Link>
-        <nav className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
-          {LINKS.map((link) => (
-            <Link key={link.href} href={link.href} className="hover:text-accent">
-              {link.label}
-            </Link>
-          ))}
+
+        <nav aria-label="Main" className="flex flex-wrap items-center gap-1 py-2">
+          {LINKS.map((link) => {
+            const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? "page" : undefined}
+                className={`border-b-2 px-3 py-2 text-sm ${
+                  active
+                    ? "border-ink font-medium text-ink"
+                    : "border-transparent text-muted hover:border-line hover:text-ink"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </header>

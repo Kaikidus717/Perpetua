@@ -1,6 +1,9 @@
 "use client";
 
+import { PageHeader } from "@/components/PageHeader";
+import { Section } from "@/components/Section";
 import { api } from "@/lib/api";
+import { CARD, CARD_MUTED, INPUT, PAGE } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -32,59 +35,63 @@ export default function LaunchPage() {
   });
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">Financeable launch</h1>
-        <p className="max-w-3xl text-slate-400">
-          Launch on DBC with a preset built for securitization: DAMM v2 migration, quote-only fee
-          collection, non-compounding fees and a permanently locked liquidity floor. Graduate, then
-          carry the creator position into the vault.
-        </p>
-      </section>
+    <div className={PAGE}>
+      <PageHeader
+        title="Launch a pool people can fund"
+        description="This page builds a DBC preset you can review before you create anything on-chain: DAMM v2 migration, quote-only fee collection, non-compounding fees and a permanently locked liquidity floor. Nothing is deployed from here."
+      />
 
-      <section className="grid gap-4 rounded-lg border border-edge bg-panel p-5 sm:grid-cols-2">
+      <section className={`${CARD} grid gap-4 p-5 sm:grid-cols-2`}>
         {FIELDS.map((field) => (
           <label key={field.key} className="space-y-1 text-sm">
-            <span className="text-slate-300">{field.label}</span>
+            <span className="text-ink">{field.label}</span>
             <input
               type="number"
               value={form[field.key]}
               onChange={(event) => setForm({ ...form, [field.key]: Number(event.target.value) })}
-              className="w-full rounded-lg border border-edge bg-ink px-3 py-2 outline-none focus:border-accent"
+              className={INPUT}
             />
-            <span className="block text-xs text-slate-500">{field.hint}</span>
+            <span className="block text-xs text-muted">{field.hint}</span>
           </label>
         ))}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Preset check</h2>
+      <Section title="Preset check" description="What the preset would look like once you run it.">
         {preset.data?.validation.valid ? (
-          <p className="text-sm text-accent">preset is valid and securitizable</p>
+          <p className="text-sm text-ink">Preset is valid and can be securitized.</p>
         ) : null}
         {preset.data && !preset.data.validation.valid ? (
-          <ul className="list-disc space-y-1 pl-5 text-sm text-amber-300">
+          <ul className="list-disc space-y-1 pl-5 text-sm text-warn">
             {preset.data.validation.errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
           </ul>
         ) : null}
         {preset.data ? (
-          <pre className="overflow-x-auto rounded-lg border border-edge bg-panel p-4 text-xs text-slate-300">
+          <pre className={`${CARD_MUTED} overflow-x-auto p-4 text-xs text-ink`}>
             {JSON.stringify(preset.data.preset, null, 2)}
           </pre>
         ) : null}
-      </section>
+      </Section>
 
-      <section className="space-y-2 rounded-lg border border-edge bg-panel p-5 text-sm text-slate-400">
-        <h2 className="text-lg font-semibold text-slate-100">Wizard</h2>
-        <p>
-          The wizard calls <code className="font-mono text-xs">create_config</code> and{" "}
-          <code className="font-mono text-xs">create_pool</code> on DBC, then waits for graduation.
-          Once the migration runs, the creator and partner position NFTs are discovered and handed
-          to the Securitize page.
+      <Section title="How the launch runs">
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-ink">
+          <li>
+            A wizard calls <code className="font-mono text-xs">create_config</code> and{" "}
+            <code className="font-mono text-xs">create_pool</code> on DBC, then waits for
+            graduation.
+          </li>
+          <li>
+            After migration, the creator and partner position NFTs are discovered and handed to the
+            Create shares page.
+          </li>
+        </ol>
+        <p className="text-xs text-muted">
+          Signing runs through{" "}
+          <code className="font-mono">packages/sdk/scripts/create-vault.ts</code>, so keys never
+          leave the operator machine.
         </p>
-      </section>
+      </Section>
     </div>
   );
 }

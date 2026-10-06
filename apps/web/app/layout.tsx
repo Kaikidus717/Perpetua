@@ -5,20 +5,18 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Perpetua — fee-rights exchange",
-  description: "Price, securitize and trade the fee stream of a locked Meteora DAMM v2 position.",
+  title: "Perpetua — own a slice of a pool's fees",
+  description:
+    "Perpetua turns the trading fees a locked Meteora pool earns into shares you can price and buy.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-ink text-slate-100">
+      <body className="min-h-screen bg-canvas text-ink antialiased">
         <Providers>
           <Header />
-          <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
-          <footer className="mx-auto max-w-6xl px-6 pb-10 text-xs text-slate-500">
-            Unaudited hackathon software. Not legal, tax or investment advice.
-          </footer>
+          <main className="mx-auto w-full max-w-5xl px-6 py-10">{children}</main>
         </Providers>
       </body>
     </html>

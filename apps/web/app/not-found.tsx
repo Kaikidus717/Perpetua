@@ -1,15 +1,18 @@
+import { LINK } from "@/lib/ui";
 import Link from "next/link";
 
 export default function NotFound() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-3xl font-semibold tracking-tight">Not found</h1>
-      <p className="text-slate-400">
-        That page, vault or pool does not exist. Vault ids are the on-chain PDA address.
+    <div className="mx-auto max-w-2xl space-y-3 text-center">
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">Page not found</h1>
+      <p className="text-sm leading-6 text-muted">
+        That page, vault or pool does not exist. A vault link ends in its on-chain address.
       </p>
-      <Link href="/" className="text-sm text-accent">
-        ← back to the exchange
-      </Link>
+      <p className="text-sm">
+        <Link href="/" className={LINK}>
+          Back to vaults
+        </Link>
+      </p>
     </div>
   );
 }

@@ -27,21 +27,21 @@ export function FeeChart({
       const chart = createChart(element, {
         height,
         layout: {
-          background: { type: ColorType.Solid, color: "#131722" },
-          textColor: "#94a3b8",
+          background: { type: ColorType.Solid, color: "#ffffff" },
+          textColor: "#71717a",
         },
         grid: {
-          vertLines: { color: "#1f2533" },
-          horzLines: { color: "#1f2533" },
+          vertLines: { color: "#f4f4f5" },
+          horzLines: { color: "#f4f4f5" },
         },
-        rightPriceScale: { borderColor: "#1f2533" },
-        timeScale: { borderColor: "#1f2533", fixLeftEdge: true },
+        rightPriceScale: { borderColor: "#e4e4e7" },
+        timeScale: { borderColor: "#e4e4e7", fixLeftEdge: true },
       });
 
       const series = chart.addSeries(AreaSeries, {
-        lineColor: "#4ade80",
-        topColor: "rgba(74, 222, 128, 0.35)",
-        bottomColor: "rgba(74, 222, 128, 0.02)",
+        lineColor: "#15803d",
+        topColor: "rgba(21, 128, 61, 0.14)",
+        bottomColor: "rgba(21, 128, 61, 0.01)",
       });
 
       const end = Math.floor(Date.now() / 1000);
@@ -62,5 +62,5 @@ export function FeeChart({
     };
   }, [days, feesUsd, height]);
 
-  return <div ref={container} className="w-full overflow-hidden rounded-lg border border-edge" />;
+  return <div ref={container} className="w-full overflow-hidden rounded-md border border-line" />;
 }

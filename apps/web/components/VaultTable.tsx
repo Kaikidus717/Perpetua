@@ -1,51 +1,52 @@
-import { explorerUrl, shortAddress, usd } from "@/lib/format";
+import { explorerUrl, shortAddress } from "@/lib/format";
+import { CARD_MUTED, LINK, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
 import type { VaultSummary } from "@perpetua/shared";
 import Link from "next/link";
 
 export function VaultTable({ vaults }: { vaults: VaultSummary[] }) {
   if (vaults.length === 0) {
     return (
-      <div className="rounded-lg border border-edge bg-panel p-6 text-sm text-slate-400">
-        No vaults indexed yet. Securitize a locked position to create the first one.
+      <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
+        No vaults yet. Create one from a locked position.
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-edge">
+    <div className={`${CARD_MUTED} overflow-hidden`}>
       <table className="w-full text-left text-sm">
-        <thead className="bg-panel text-xs uppercase tracking-wide text-slate-400">
+        <thead className="bg-panel">
           <tr>
-            <th className="px-4 py-3">Vault</th>
-            <th className="px-4 py-3">Pool</th>
-            <th className="px-4 py-3 text-right">Staked</th>
-            <th className="px-4 py-3 text-right">Fees claimed</th>
-            <th className="px-4 py-3" />
+            <th className={TH}>Vault</th>
+            <th className={TH}>Pool</th>
+            <th className={TH_RIGHT}>Shares staked</th>
+            <th className={TH_RIGHT}>Fees claimed A / B</th>
+            <th className={TH_RIGHT}>
+              <span className="sr-only">Open</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {vaults.map((vault) => (
-            <tr key={vault.address} className="border-t border-edge">
-              <td className="px-4 py-3">
+            <tr key={vault.address}>
+              <td className={`${TD} font-mono text-xs`}>
                 <a
                   href={explorerUrl(vault.address)}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono text-xs text-accent"
+                  className={LINK}
                 >
                   {shortAddress(vault.address)}
                 </a>
               </td>
-              <td className="px-4 py-3 font-mono text-xs text-slate-400">
-                {shortAddress(vault.pool)}
+              <td className={`${TD} font-mono text-xs text-muted`}>{shortAddress(vault.pool)}</td>
+              <td className={TD_RIGHT}>{vault.totalStaked}</td>
+              <td className={TD_RIGHT}>
+                {vault.totalClaimedA} / {vault.totalClaimedB}
               </td>
-              <td className="px-4 py-3 text-right">{vault.totalStaked}</td>
-              <td className="px-4 py-3 text-right">
-                {usd(Number(vault.totalClaimedA) + Number(vault.totalClaimedB), 0)}
-              </td>
-              <td className="px-4 py-3 text-right">
-                <Link href={`/vault/${vault.address}`} className="text-accent">
-                  open
+              <td className={TD_RIGHT}>
+                <Link href={`/vault/${vault.address}`} className={LINK}>
+                  Open
                 </Link>
               </td>
             </tr>

@@ -7,14 +7,14 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
     <html lang="en">
       <body
         style={{
-          background: "#0b0e14",
-          color: "#e2e8f0",
+          background: "#ffffff",
+          color: "#16181d",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           padding: "3rem",
         }}
       >
         <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Perpetua failed to start</h1>
-        <p style={{ color: "#94a3b8", marginTop: "0.5rem" }}>
+        <p style={{ color: "#6b7280", marginTop: "0.5rem" }}>
           Check that the indexer API is reachable, then reload.
         </p>
         <button
@@ -22,10 +22,10 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
           onClick={reset}
           style={{
             marginTop: "1rem",
-            border: "1px solid #38bdf8",
-            borderRadius: "0.5rem",
+            border: "1px solid #16181d",
+            borderRadius: "0.375rem",
             padding: "0.5rem 1rem",
-            color: "#38bdf8",
+            color: "#16181d",
             background: "transparent",
             cursor: "pointer",
           }}

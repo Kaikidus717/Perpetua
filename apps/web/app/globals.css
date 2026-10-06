@@ -3,14 +3,26 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: #0b0e14;
-  color: #e6e8ee;
+  background: #ffffff;
+  color: #18181b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  text-rendering: optimizeLegibility;
 }
 
 a {
   color: inherit;
+}
+
+/* Figures sit in columns and do not jitter as values tick over. */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }

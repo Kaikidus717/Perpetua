@@ -8,7 +8,7 @@ the chain hashes **byte-for-byte** to the artifact the tests ran against.
 
 | | |
 |---|---|
-| TypeScript | **131 tests** · `biome check` clean · `tsc` clean · `next build` green |
+| TypeScript | **148 tests** · `biome check` clean · `tsc` clean · `next build` green |
 | Rust | **26 tests** · `cargo clippy --all-targets -D warnings` clean |
 | Program | 9 instructions · 448,248 bytes · SBF verifier clean · deployed on devnet |
 | Shape | 5 workspace packages · 4 apps · 1 web UI · 1 MCP server |
@@ -54,7 +54,7 @@ The pitch: *cash-flow tokens — a new asset class on Meteora's liquidity layer.
 
 ```
    ┌────────────────────────── Web · Next.js (:3000) ────────────────────────────┐
-   │  / Explore   /terminal   /launch   /securitize   /vault/[id]   /kpi          │
+   │  /           /terminal   /launch   /securitize   /vault/[id]   /kpi          │
    └───────────────▲───────────────────────────────────────────▲─────────────────┘
                    │ REST + SSE                                │ pricing (pure TS)
    ┌───────────────┴────────────────┐             ┌────────────┴─────────────────┐
@@ -213,6 +213,7 @@ Copy [.env.example](.env.example) to `.env`. Every value has a working default f
 |---|---|---|
 | `PORT` | `8787` | api |
 | `RPC_URL` | the devnet RPC | api, indexer, keeper |
+| `RPC_URLS` | the cluster's public RPC | api, indexer, keeper — comma-separated; tried in order on 429, 408 and 5xx |
 | `CLUSTER` | `devnet` | api (`resolveNetwork`) |
 | `DATABASE_URL` | empty → in-memory | api |
 | `CORS_ORIGINS` | local web origins in dev | api |
@@ -223,13 +224,13 @@ Copy [.env.example](.env.example) to `.env`. Every value has a working default f
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8787` | web |
 | `PERPETUA_API_URL` | `http://localhost:8787` | mcp |
 
-### 1. Explore — `/`
+### 1. Vaults — `/`
 
 The landing page. Reads `/v1/stats` for vaults, positions securitized, fees distributed and unique
 stakers, then lists every indexed vault from `/v1/vaults` with its pool, share mint and totals. Each
 row links into the vault page; "price any pool →" goes to the terminal. **No wallet needed.**
 
-### 2. Terminal — `/terminal`
+### 2. Pricing — `/terminal`
 
 Prices a fee stream without any wallet, which is the fastest way to understand the model.
 
@@ -244,7 +245,7 @@ Behind it: `GET /v1/pools/:pool/yield` and `GET /v1/pools/:pool/series`, compute
 `@perpetua/valuation` — pure TypeScript, no chain access. See
 [The valuation model](#the-valuation-model).
 
-### 3. Launch — `/launch`
+### 3. Launch plan — `/launch`
 
 Builds the **financeable** DBC preset: a launch that graduates to DAMM v2 with quote-only fee
 collection, non-compounding fees and a permanently locked liquidity floor, so the resulting creator
@@ -257,7 +258,7 @@ JSON. Invalid combinations list the exact failing constraint.
 > The wizard that calls `create_config` and `create_pool` on DBC and waits for graduation is described
 > but not wired to a wallet; the preset it needs is real and validated.
 
-### 4. Securitize — `/securitize`
+### 4. Create shares — `/securitize`
 
 Turns a permanently locked position into a share token.
 
@@ -290,7 +291,7 @@ and exposes the four holder actions:
 Each transaction is built by the API (`POST /v1/tx/stake`, `/v1/tx/unstake`, `/v1/tx/harvest`,
 `/v1/tx/crank-claim`) and signed in the browser.
 
-### 6. KPI — `/kpi`
+### 6. Stats — `/kpi`
 
 Vaults, positions securitized, USD fees distributed, unique stakers, DLMM volume and live share
 tokens — all straight from the indexer API, all traceable to on-chain accounts.
@@ -521,7 +522,7 @@ data is thinnest, which is the same idea as shrinkage in a hierarchical model.
 | `volume_concentration` | one wallet drove more than half of volume |
 | `low_liquidity` | pool liquidity below $50k |
 
-Flags do not change the price. They are surfaced next to it and used to filter the Explore table.
+Flags do not change the price. They are surfaced next to it and used to filter the Vaults table.
 
 ### Sessions, compounding, reproducibility
 
@@ -559,7 +560,7 @@ against **live devnet**, not just the local harness — see [Verified on devnet]
 | Bytecode identity | `solana program dump` hashes **byte-for-byte** to `target/deploy/perpetua_vault.so` (`sha256 30796ad88425eec7…b7aca6a472`) — what is live is what was tested |
 | Position-lock offsets | verified against **11 live on-chain DAMM v2 positions**, one of them permanently locked |
 | Rust | `cargo test --workspace` → **26 pass**; `cargo clippy --workspace --all-targets -- -D warnings` clean |
-| TypeScript | **131 tests** across 7 packages; `biome check` clean; `tsc` clean; `next build` green |
+| TypeScript | **148 tests** across 8 packages; `biome check` clean; `tsc` clean; `next build` green |
 | `@perpetua/web` | 6 pages, plus `loading.tsx`, `error.tsx`, `not-found.tsx` and `global-error.tsx` boundaries |
 | Meteora SDKs | `@meteora-ag/cp-amm-sdk`, `@meteora-ag/dlmm` and `-dynamic-bonding-curve-sdk` are wired through real adapters, not stubs |
 | LiteSVM suite | `tests/litesvm`; loads the compiled artifact when `cargo build-sbf` is available and skips cleanly otherwise |
@@ -568,14 +569,15 @@ against **live devnet**, not just the local harness — see [Verified on devnet]
 
 | Suite | Tests |
 |---|---|
-| `@perpetua/valuation` | 42 |
+| `@perpetua/valuation` | 46 |
+| `@perpetua/shared` | 13 |
 | `@perpetua/mcp` | 30 |
 | `@perpetua/sdk` | 28 |
 | `@perpetua/api` | 10 |
 | `@perpetua/stock-kit` | 9 |
 | `@perpetua/indexer` | 7 |
 | `@perpetua/keeper` | 5 |
-| **TypeScript total** | **131** (turbo: 12 tasks) |
+| **TypeScript total** | **148** (turbo: 12 tasks) |
 | `perpetua_vault` — Rust unit tests | 17 |
 | `perpetua_vault_litesvm` — boot + flow | 9 |
 | **Rust total** | **26** |
@@ -676,7 +678,7 @@ Run from the repo root unless noted.
 ## Testing
 
 ```bash
-pnpm test                                        # 131 TypeScript tests
+pnpm test                                        # 148 TypeScript tests
 pnpm lint && pnpm typecheck                      # biome + tsc
 cargo test --workspace                           # 26 Rust tests
 cargo clippy --workspace --all-targets -- -D warnings

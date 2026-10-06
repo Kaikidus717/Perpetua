@@ -35,7 +35,7 @@ pnpm --filter @perpetua/valuation backtest
 Prints the 30-day-ahead MAE and the calibration ratio on synthetic pools with a known decay rate and
 writes `packages/valuation/backtest/results.md`.
 
-## 3. Securitize — `/securitize`
+## 3. Create shares — `/securitize`
 
 The page scans a wallet for DAMM v2 positions, checks eligibility (unlocked == 0, vested == 0,
 permanent lock > 0), previews the valuation and shows the transactions the operator runs. Connect a
@@ -58,7 +58,7 @@ position-lock byte offsets) and **9** in the LiteSVM harness under `tests/litesv
 the compiled binary and asserts it is a valid, executable program, and eight that drive
 `init_config → create_vault → crank_claim → harvest` against a mock DAMM v2.
 
-## 5. KPI page
+## 5. Stats page
 
 `/kpi` shows vaults, positions securitized, fees distributed, unique stakers and DLMM volume, all
 sourced from the indexer API.

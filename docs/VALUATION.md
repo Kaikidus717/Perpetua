@@ -36,7 +36,7 @@ a promise — a single "guaranteed APR" would be dishonest.
 - `volume_concentration` — one wallet drove more than half of volume.
 - `low_liquidity` — pool liquidity below $50k.
 
-Flags do not change the price; they are surfaced next to it and filter the Explore table.
+Flags do not change the price; they are surfaced next to it and filter the Vaults table.
 
 ## Cohort prior
 

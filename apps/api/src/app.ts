@@ -233,45 +233,70 @@ export function createApp(deps: AppDeps): Hono {
     if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
     const parsed = createVaultBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    return c.json({ transaction: await buildCreateVault(deps.connection, parsed.data) });
+    try {
+      return c.json({ transaction: await buildCreateVault(deps.connection, parsed.data) });
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
   });
 
   app.post("/v1/tx/crank-claim", async (c) => {
     if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
     const parsed = ownerVaultBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    return c.json({
-      transaction: await buildCrankClaim(deps.connection, {
-        caller: parsed.data.owner,
-        vault: parsed.data.vault,
-      }),
-    });
+    try {
+      return c.json({
+        transaction: await buildCrankClaim(deps.connection, {
+          caller: parsed.data.owner,
+          vault: parsed.data.vault,
+        }),
+      });
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
   });
 
   app.post("/v1/tx/stake", async (c) => {
     if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
     const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    return c.json({ transaction: await buildStake(deps.connection, parsed.data) });
+    try {
+      return c.json({ transaction: await buildStake(deps.connection, parsed.data) });
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
   });
 
   app.post("/v1/tx/unstake", async (c) => {
     if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
     const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    return c.json({ transaction: await buildUnstake(deps.connection, parsed.data) });
+    try {
+      return c.json({ transaction: await buildUnstake(deps.connection, parsed.data) });
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
   });
 
   app.post("/v1/tx/harvest", async (c) => {
     if (!deps.connection) return c.json({ error: "rpc connection is not configured" }, 503);
     const parsed = ownerVaultBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    return c.json({
-      transaction: await buildHarvest(deps.connection, {
-        owner: parsed.data.owner,
-        vault: parsed.data.vault,
-      }),
-    });
+    try {
+      return c.json({
+        transaction: await buildHarvest(deps.connection, {
+          owner: parsed.data.owner,
+          vault: parsed.data.vault,
+        }),
+      });
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
   });
 
   app.get("/v1/stats", async (c) => c.json({ stats: await deps.store.stats() }));
@@ -314,6 +339,17 @@ class NoHistoryError extends Error {}
 function priceError(error: unknown): { status: 422 | 502; body: { error: string } } {
   if (error instanceof NoHistoryError) return { status: 422, body: { error: error.message } };
   return { status: 502, body: { error: dataApiError(error) } };
+}
+
+/// The transaction builders read the chain — a blockhash, the config account, the vault account — so
+/// they fail for two very different reasons: the request names something that is not there, or the
+/// RPC itself is unhappy. Say which, instead of leaking an opaque 500.
+function chainError(error: unknown): { status: 400 | 502; message: string } {
+  const message = error instanceof Error ? error.message : "could not build the transaction";
+  const missing = /does not exist|no data|could not find|not found|invalid public key/i.test(
+    message,
+  );
+  return { status: missing ? 400 : 502, message };
 }
 
 async function pricePool(

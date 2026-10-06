@@ -24,8 +24,6 @@ import { buildCrankClaim, buildCreateVault, buildHarvest, buildStake, buildUnsta
 export interface AppDeps {
   store: Store;
   dataApi: DataApiPort;
-  demoPool?: string;
-  demoWallet?: string;
   /// When set, the `/v1/tx/*` routes can build unsigned transactions for wallets.
   connection?: Connection;
   /// Browser origins allowed to call the API. Defaults to `CORS_ORIGINS`.
@@ -172,13 +170,13 @@ export function createApp(deps: AppDeps): Hono {
     const pool = parsed.data.pool ?? (await deps.store.getPositionPool(position));
     if (!pool) return c.json({ error: "unknown pool; pass ?pool=" }, 400);
 
-    const result = await pricePool(deps, pool, parsed.data);
-    return c.json({ position, valuation: serialize(result) });
+    try {
+      const result = await pricePool(deps, pool, parsed.data);
+      return c.json({ position, valuation: serialize(result) });
+    } catch (error) {
+      return c.json({ error: dataApiError(error) }, 502);
+    }
   });
-
-  app.get("/v1/demo", (c) =>
-    c.json({ pool: deps.demoPool ?? null, wallet: deps.demoWallet ?? null }),
-  );
 
   app.get("/v1/dbc/preset", (c) => {
     const parsed = presetQuery.safeParse(c.req.query());
@@ -190,15 +188,23 @@ export function createApp(deps: AppDeps): Hono {
   app.get("/v1/pools/:pool/series", async (c) => {
     const parsed = valuationQuery.safeParse(c.req.query());
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    const series = await deps.dataApi.poolDaily(c.req.param("pool"), parsed.data.days);
-    return c.json({ series });
+    try {
+      const series = await deps.dataApi.poolDaily(c.req.param("pool"), parsed.data.days);
+      return c.json({ series });
+    } catch (error) {
+      return c.json({ error: dataApiError(error) }, 502);
+    }
   });
 
   app.get("/v1/pools/:pool/yield", async (c) => {
     const parsed = valuationQuery.safeParse(c.req.query());
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    const result = await pricePool(deps, c.req.param("pool"), parsed.data);
-    return c.json({ valuation: serialize(result) });
+    try {
+      const result = await pricePool(deps, c.req.param("pool"), parsed.data);
+      return c.json({ valuation: serialize(result) });
+    } catch (error) {
+      return c.json({ error: dataApiError(error) }, 502);
+    }
   });
 
   app.get("/v1/sale/plan", (c) => {
@@ -281,6 +287,12 @@ export function createApp(deps: AppDeps): Hono {
   );
 
   return app;
+}
+
+/// The data API is the only source of fee history. When it is unreachable, or has nothing for the
+/// pool, say so — a stand-in series is indistinguishable from a real one once it reaches a chart.
+function dataApiError(error: unknown): string {
+  return error instanceof Error ? error.message : "data api request failed";
 }
 
 async function pricePool(

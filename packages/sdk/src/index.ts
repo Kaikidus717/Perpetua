@@ -6,6 +6,7 @@ export * from "./rpc.js";
 export * from "./vault/pda.js";
 export * from "./vault/types.js";
 export * from "./vault/client.js";
+export * from "./data/meteoraDataApi.js";
 export * from "./data/staticDataApi.js";
 export * from "./sale/bins.js";
 export * from "./sale/bids.js";

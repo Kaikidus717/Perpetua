@@ -1,15 +1,50 @@
 import { StaticDataApi } from "@perpetua/sdk/data";
+import type { PoolDailySeries, PositionSummary } from "@perpetua/shared";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
-import { DEMO_POOL, DEMO_WALLET, demoPools, demoPositions } from "../src/demo.js";
 import { InMemoryStore } from "../src/store/memory.js";
+
+/// A fixed series so these tests never touch the network.
+///
+/// This lives in the test file deliberately. The API ship no data of its own — `server.ts` points at
+/// Meteora's data API — so a fixture here is a test input, not something a running server can serve.
+const POOL = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
+const WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+const POSITION = "8sbCkYzQHNhcn3sRJuAVNXvVQdEoaq1eLE8b2EsqRsBp";
+
+function fixedSeries(): PoolDailySeries {
+  const days = Array.from({ length: 30 }, (_, index) => index + 1);
+  return {
+    pool: POOL,
+    days,
+    feesUsd: days.map((day) => 4200 * Math.exp(-0.045 * day)),
+    volumeUsd: days.map((day) => 900_000 * Math.exp(-0.03 * day)),
+    liquidityUsd: days.map(() => 750_000),
+  };
+}
+
+function fixedPositions(): PositionSummary[] {
+  return [
+    {
+      address: POSITION,
+      pool: POOL,
+      nftMint: "ELWTtHkjB8yH2pHMFA6L6o7EQGXn6UxVh2c5vS4cJ4FN",
+      tokenAMint: "So11111111111111111111111111111111111111112",
+      tokenBMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      unlockedLiquidity: "0",
+      vestedLiquidity: "0",
+      permanentLockedLiquidity: "1250000000",
+    },
+  ];
+}
 
 function app() {
   return createApp({
     store: new InMemoryStore(),
-    dataApi: new StaticDataApi(demoPools(), demoPositions()),
-    demoPool: DEMO_POOL,
-    demoWallet: DEMO_WALLET,
+    dataApi: new StaticDataApi(
+      new Map([[POOL, fixedSeries()]]),
+      new Map([[WALLET, fixedPositions()]]),
+    ),
   });
 }
 
@@ -21,7 +56,7 @@ describe("perpetua api", () => {
   });
 
   it("prices a pool by address", async () => {
-    const res = await app().request(`/v1/pools/${DEMO_POOL}/yield`);
+    const res = await app().request(`/v1/pools/${POOL}/yield`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       valuation: { fairValueUsd: number; scenarios: unknown[] };
@@ -70,15 +105,27 @@ describe("perpetua api", () => {
     expect(body.validation.valid).toBe(true);
   });
 
-  it("exposes the demo pool and wallet", async () => {
-    const res = await app().request("/v1/demo");
-    const body = (await res.json()) as { pool: string | null; wallet: string | null };
-    expect(body.pool).toBe(DEMO_POOL);
-    expect(body.wallet).toBe(DEMO_WALLET);
+  it("reports a failing data api instead of inventing a fee series", async () => {
+    const failing = createApp({
+      store: new InMemoryStore(),
+      dataApi: {
+        poolDaily: async () => {
+          throw new Error("data api unreachable");
+        },
+        walletPositions: async () => [],
+      },
+    });
+
+    const yield_ = await failing.request(`/v1/pools/${POOL}/yield`);
+    expect(yield_.status).toBe(502);
+    expect(await yield_.json()).toEqual({ error: "data api unreachable" });
+
+    const series = await failing.request(`/v1/pools/${POOL}/series`);
+    expect(series.status).toBe(502);
   });
 
-  it("lists the demo wallet's eligible position", async () => {
-    const res = await app().request(`/v1/positions/${DEMO_WALLET}`);
+  it("lists a wallet's indexed positions", async () => {
+    const res = await app().request(`/v1/positions/${WALLET}`);
     const body = (await res.json()) as { positions: Array<{ permanentLockedLiquidity: string }> };
     expect(body.positions).toHaveLength(1);
     expect(body.positions[0]?.permanentLockedLiquidity).toBe("1250000000");

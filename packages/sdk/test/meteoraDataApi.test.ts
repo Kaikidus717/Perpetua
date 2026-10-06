@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MeteoraDataApi, normalizePoolDaily } from "../src/dataApi.js";
+import { MeteoraDataApi, normalizePoolDaily } from "../src/data/meteoraDataApi.js";
 
 describe("normalizePoolDaily", () => {
   it("sorts rows by day and projects to series columns", () => {
@@ -36,7 +36,23 @@ describe("MeteoraDataApi", () => {
     expect(series.feesUsd).toEqual([3]);
   });
 
-  it("throws on a non-ok response", async () => {
+  it("reads wallet positions from the wallet endpoint", async () => {
+    const calls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      calls.push(url);
+      return new Response(JSON.stringify({ positions: [{ address: "pos" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const api = new MeteoraDataApi({ baseUrl: "https://example.test", fetchFn });
+    const positions = await api.walletPositions("wallet");
+    expect(calls[0]).toBe("https://example.test/wallets/wallet/positions");
+    expect(positions).toEqual([{ address: "pos" }]);
+  });
+
+  it("throws on a non-ok response instead of returning placeholder rows", async () => {
     const fetchFn = (async () => new Response("nope", { status: 500 })) as unknown as typeof fetch;
     const api = new MeteoraDataApi({ baseUrl: "https://example.test", fetchFn });
     await expect(api.poolDaily("p", 7)).rejects.toThrow(/500/);

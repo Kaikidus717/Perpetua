@@ -1,9 +1,9 @@
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
 import { InMemoryStore, type Store } from "@perpetua/api";
 import { PerpetuaVaultClient, createConnection } from "@perpetua/sdk";
+import { MeteoraDataApi } from "@perpetua/sdk/data";
 import { resolveNetwork } from "@perpetua/shared";
 import { Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
-import { MeteoraDataApi } from "./dataApi.js";
 import { Indexer } from "./indexer.js";
 
 const network = resolveNetwork(process.env.CLUSTER);

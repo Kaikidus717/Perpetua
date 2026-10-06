@@ -1,9 +1,8 @@
 import { serve } from "@hono/node-server";
 import { createConnection } from "@perpetua/sdk";
-import { StaticDataApi } from "@perpetua/sdk/data";
+import { MeteoraDataApi } from "@perpetua/sdk/data";
 import { resolveNetwork } from "@perpetua/shared";
 import { createApp } from "./app.js";
-import { DEMO_POOL, DEMO_WALLET, demoPools, demoPositions } from "./demo.js";
 import { InMemoryStore } from "./store/memory.js";
 import type { Store } from "./store/types.js";
 
@@ -24,16 +23,18 @@ async function resolveStore(): Promise<Store> {
 }
 
 const store = await resolveStore();
-const dataApi = new StaticDataApi(demoPools(), demoPositions());
+// Fee history comes from Meteora's data API and nowhere else. There is no bundled or generated
+// series behind it: if this endpoint is unreachable the request errors and the UI shows the error,
+// rather than a chart that looks live and is not.
+const dataApiUrl = process.env.METEORA_DATA_API ?? network.dlmmDataApi;
 const app = createApp({
   store,
-  dataApi,
-  demoPool: DEMO_POOL,
-  demoWallet: DEMO_WALLET,
+  dataApi: new MeteoraDataApi({ baseUrl: dataApiUrl }),
   connection,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`perpetua api listening on http://localhost:${info.port}`);
   console.log(`cluster ${network.cluster} via ${connection.rpcEndpoint}`);
+  console.log(`fee history from ${dataApiUrl}`);
 });

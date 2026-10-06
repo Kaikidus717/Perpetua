@@ -5,16 +5,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { RiskFlags } from "@/components/RiskFlags";
 import { Stat } from "@/components/Stat";
 import { api } from "@/lib/api";
-import { compactUsd, pct, usd } from "@/lib/format";
-import { BUTTON_PRIMARY, CARD_MUTED, PAGE, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
+import { UNKNOWN, compactUsd, pct, usd } from "@/lib/format";
+import { BUTTON_PRIMARY, CARD_MUTED, INPUT_MONO, PAGE, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 export default function TerminalPage() {
-  const demo = useQuery({ queryKey: ["demo"], queryFn: api.demo });
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
-  const active = submitted ?? demo.data?.pool ?? null;
+  const active = submitted;
 
   const valuation = useQuery({
     queryKey: ["valuation", active],
@@ -27,6 +26,7 @@ export default function TerminalPage() {
     enabled: Boolean(active),
   });
   const fairValue = valuation.data?.valuation.fairValuePerShareUsd;
+  const baseScenario = valuation.data?.valuation.scenarios.find((s) => s.scenario.name === "base");
   const ladder = useQuery({
     queryKey: ["ladder", fairValue],
     queryFn: () => (fairValue ? api.ladder(fairValue) : Promise.reject(new Error("no price"))),
@@ -51,13 +51,19 @@ export default function TerminalPage() {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           aria-label="Pool address to price"
-          placeholder="pool address (leave blank for the demo pool)"
-          className="min-w-[22rem] flex-1 rounded-md border border-line bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none placeholder:text-muted focus:border-ink"
+          placeholder="pool address"
+          className={`${INPUT_MONO} min-w-[22rem] flex-1`}
         />
         <button type="submit" className={BUTTON_PRIMARY}>
           Price
         </button>
       </form>
+
+      {!active ? (
+        <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
+          Paste a DAMM v2 pool address to price its fee stream.
+        </div>
+      ) : null}
 
       {active ? <p className="text-center font-mono text-xs text-muted">pricing {active}</p> : null}
 
@@ -89,10 +95,7 @@ export default function TerminalPage() {
             />
             <Stat
               label="Payback (base)"
-              value={`${
-                valuation.data.valuation.scenarios.find((s) => s.scenario.name === "base")
-                  ?.paybackDays ?? 0
-              } days`}
+              value={baseScenario ? `${baseScenario.paybackDays} days` : UNKNOWN}
             />
           </section>
 

@@ -8,7 +8,7 @@ the chain hashes **byte-for-byte** to the artifact the tests ran against.
 
 | | |
 |---|---|
-| TypeScript | **148 tests** · `biome check` clean · `tsc` clean · `next build` green |
+| TypeScript | **149 tests** · `biome check` clean · `tsc` clean · `next build` green |
 | Rust | **26 tests** · `cargo clippy --all-targets -D warnings` clean |
 | Program | 9 instructions · 448,248 bytes · SBF verifier clean · deployed on devnet |
 | Shape | 5 workspace packages · 4 apps · 1 web UI · 1 MCP server |
@@ -150,7 +150,7 @@ perpetua/
 |---|---|---|
 | `@perpetua/shared` | types, program ids and network resolution — the vocabulary | `PROGRAM_IDS`, `resolveNetwork`, `CP_AMM_POOL_AUTHORITY`, `ValuationInput`, `VaultSummary` |
 | `@perpetua/valuation` | the pricing model: pure TypeScript, zero chain dependency | `valuePosition`, `estimateDecay`, `cohortPriorFor`, `analyzeCompounding`, `sessionAt`, `splitFeesBySession`, `inputsHash`, `MODEL_VERSION` |
-| `@perpetua/sdk` | everything that touches the chain or the Meteora SDKs | `PerpetuaVaultClient`, `findVaultPda`, `findConfigPda`, `buildLadder`, `buildFinanceablePreset`, `evaluateEligibility`, `convictionScore`, `buildDepthChart`, `DammV2Adapter`, `DlmmAdapter`, `DbcAdapter` |
+| `@perpetua/sdk` | everything that touches the chain or the Meteora SDKs | `PerpetuaVaultClient`, `findVaultPda`, `findConfigPda`, `buildLadder`, `buildFinanceablePreset`, `evaluateEligibility`, `convictionScore`, `buildDepthChart`, `DammV2Adapter`, `DlmmAdapter`, `DbcAdapter`, `MeteoraDataApi` |
 | `@perpetua/stock-kit` | the differentiator for stock-quoted launches | `buildClosedMarketFeeCurve`, `anchoredStart` |
 | `@perpetua/mcp` | Perpetua for other AI agents | `createServer`, `TOOLS`, the stdio entrypoint |
 
@@ -181,8 +181,9 @@ pnpm --filter @perpetua/api dev              # API + SSE  → http://localhost:8
 pnpm --filter @perpetua/web dev              # web        → http://localhost:3000
 ```
 
-Open <http://localhost:3000>. The API ships with a **demo pool and a demo wallet**, so every page
-works before you touch a chain.
+Open <http://localhost:3000>. Every figure on every page comes from the indexer API, Meteora's data API
+or the chain itself — there is no bundled sample data to fall back on — so start the API first and
+everything you see is live.
 
 Or run the whole stack in watch mode:
 
@@ -234,7 +235,7 @@ row links into the vault page; "price any pool →" goes to the terminal. **No w
 
 Prices a fee stream without any wallet, which is the fastest way to understand the model.
 
-1. Leave the input blank to price the demo pool, or paste a DAMM v2 pool address.
+1. Paste a DAMM v2 pool address.
 2. Press **Price**.
 
 You get fair value and a bear/base/bull range, fair value per share, implied APR at fair value, a
@@ -262,8 +263,8 @@ JSON. Invalid combinations list the exact failing constraint.
 
 Turns a permanently locked position into a share token.
 
-1. Connect a browser wallet, or paste a wallet address. With no wallet extension present the demo
-   wallet is preloaded automatically.
+1. Connect a browser wallet, or paste a wallet address to scan. With no wallet extension present you
+   must paste an address.
 2. The page scans that wallet through `GET /v1/positions/:wallet/onchain` and shows the position's
    unlocked, vested and permanently locked liquidity, plus an **eligibility verdict** returned by the
    API.
@@ -430,7 +431,6 @@ and `DrizzleStore` (Postgres). Base URL `http://localhost:8787`.
 | Route | Query | Returns |
 |---|---|---|
 | `GET /health` | | `{ ok: true }` |
-| `GET /v1/demo` | | the demo pool and wallet |
 | `GET /v1/stats` | | vaults, positions securitized, fees distributed, unique stakers, DLMM volume |
 | `GET /v1/vaults` | | every indexed vault |
 | `GET /v1/vaults/:id` | | one vault, or 404 |
@@ -458,7 +458,7 @@ RPC connection. **The API never holds a key.**
 | `POST /v1/tx/harvest` | `owner`, `vault` |
 
 ```bash
-POOL=$(curl -s localhost:8787/v1/demo | jq -r .pool)
+POOL=<damm-v2-pool-address>
 curl -s "localhost:8787/v1/pools/$POOL/yield" | jq .valuation.fairValueUsd
 curl -s "localhost:8787/v1/sale/plan?fairValuePerShareUsd=1" | jq .plan.weightedAveragePriceUsd
 
@@ -560,7 +560,7 @@ against **live devnet**, not just the local harness — see [Verified on devnet]
 | Bytecode identity | `solana program dump` hashes **byte-for-byte** to `target/deploy/perpetua_vault.so` (`sha256 30796ad88425eec7…b7aca6a472`) — what is live is what was tested |
 | Position-lock offsets | verified against **11 live on-chain DAMM v2 positions**, one of them permanently locked |
 | Rust | `cargo test --workspace` → **26 pass**; `cargo clippy --workspace --all-targets -- -D warnings` clean |
-| TypeScript | **148 tests** across 8 packages; `biome check` clean; `tsc` clean; `next build` green |
+| TypeScript | **149 tests** across 8 packages; `biome check` clean; `tsc` clean; `next build` green |
 | `@perpetua/web` | 6 pages, plus `loading.tsx`, `error.tsx`, `not-found.tsx` and `global-error.tsx` boundaries |
 | Meteora SDKs | `@meteora-ag/cp-amm-sdk`, `@meteora-ag/dlmm` and `-dynamic-bonding-curve-sdk` are wired through real adapters, not stubs |
 | LiteSVM suite | `tests/litesvm`; loads the compiled artifact when `cargo build-sbf` is available and skips cleanly otherwise |
@@ -572,12 +572,12 @@ against **live devnet**, not just the local harness — see [Verified on devnet]
 | `@perpetua/valuation` | 46 |
 | `@perpetua/shared` | 13 |
 | `@perpetua/mcp` | 30 |
-| `@perpetua/sdk` | 28 |
+| `@perpetua/sdk` | 32 |
 | `@perpetua/api` | 10 |
 | `@perpetua/stock-kit` | 9 |
-| `@perpetua/indexer` | 7 |
+| `@perpetua/indexer` | 4 |
 | `@perpetua/keeper` | 5 |
-| **TypeScript total** | **148** (turbo: 12 tasks) |
+| **TypeScript total** | **149** (turbo: 12 tasks) |
 | `perpetua_vault` — Rust unit tests | 17 |
 | `perpetua_vault_litesvm` — boot + flow | 9 |
 | **Rust total** | **26** |
@@ -678,7 +678,7 @@ Run from the repo root unless noted.
 ## Testing
 
 ```bash
-pnpm test                                        # 148 TypeScript tests
+pnpm test                                        # 149 TypeScript tests
 pnpm lint && pnpm typecheck                      # biome + tsc
 cargo test --workspace                           # 26 Rust tests
 cargo clippy --workspace --all-targets -- -D warnings

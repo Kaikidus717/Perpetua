@@ -13,9 +13,8 @@ import { useState } from "react";
 
 export default function SecuritizePage() {
   const wallet = useSolanaWallet();
-  const demo = useQuery({ queryKey: ["demo"], queryFn: api.demo });
   const [manual, setManual] = useState("");
-  const target = wallet.address ?? (manual.trim() || demo.data?.wallet || null);
+  const target = wallet.address ?? (manual.trim() || null);
 
   const positions = useQuery({
     queryKey: ["positions", target],
@@ -102,7 +101,9 @@ export default function SecuritizePage() {
 
       {wallet.error ? <p className="text-sm text-warn">{wallet.error}</p> : null}
       {!wallet.available && !manual ? (
-        <p className="text-sm text-muted">No wallet detected — scanning the demo wallet.</p>
+        <p className="text-sm text-muted">
+          No wallet extension detected. Paste an address above to scan it.
+        </p>
       ) : null}
 
       <Section

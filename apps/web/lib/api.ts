@@ -76,7 +76,6 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  demo: () => get<{ pool: string | null; wallet: string | null }>("/v1/demo"),
   preset: (params: {
     creatorTradingFeePct?: number;
     creatorLiquidityPct?: number;

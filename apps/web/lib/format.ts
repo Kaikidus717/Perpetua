@@ -1,5 +1,9 @@
-export function usd(value: number, digits = 2): string {
-  if (!Number.isFinite(value)) return "n/a";
+/// Shown when a value is genuinely unknown: not loaded yet, or the API is unreachable. Rendering a
+/// zero in its place would state a fact we do not have.
+export const UNKNOWN = "—";
+
+export function usd(value: number | undefined, digits = 2): string {
+  if (value === undefined || !Number.isFinite(value)) return UNKNOWN;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -7,8 +11,8 @@ export function usd(value: number, digits = 2): string {
   }).format(value);
 }
 
-export function compactUsd(value: number): string {
-  if (!Number.isFinite(value)) return "n/a";
+export function compactUsd(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return UNKNOWN;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -17,9 +21,14 @@ export function compactUsd(value: number): string {
   }).format(value);
 }
 
-export function pct(value: number, digits = 2): string {
-  if (!Number.isFinite(value)) return "n/a";
+export function pct(value: number | undefined, digits = 2): string {
+  if (value === undefined || !Number.isFinite(value)) return UNKNOWN;
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+/// Counts. A count we have not read yet is unknown, not zero.
+export function count(value: number | undefined): string {
+  return value === undefined ? UNKNOWN : String(value);
 }
 
 export function shortAddress(address: string): string {

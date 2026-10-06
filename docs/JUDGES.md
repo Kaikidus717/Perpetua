@@ -11,11 +11,12 @@ pnpm --filter @perpetua/api dev      # terminal A → http://localhost:8787
 pnpm --filter @perpetua/web dev      # terminal B → http://localhost:3000
 ```
 
-The API ships with a demo pool and a demo wallet, so everything below works offline.
+Fee history comes from Meteora's data API and positions come from the chain, so steps 1–3 need network
+access and step 3 needs a wallet. Nothing on these pages is simulated.
 
 ## 1. Price a fee stream — `/terminal`
 
-Open `http://localhost:3000/terminal`. The demo pool is priced automatically. You get:
+Open `http://localhost:3000/terminal` and paste a DAMM v2 pool address. You get:
 
 - fair value and a bear/base/bull range,
 - fair value per share and implied APR,
@@ -39,7 +40,7 @@ writes `packages/valuation/backtest/results.md`.
 
 The page scans a wallet for DAMM v2 positions, checks eligibility (unlocked == 0, vested == 0,
 permanent lock > 0), previews the valuation and shows the transactions the operator runs. Connect a
-wallet or paste an address to scan; the demo wallet is preloaded.
+wallet or paste an address to scan.
 
 ## 4. Prove the on-chain side
 

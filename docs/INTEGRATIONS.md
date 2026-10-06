@@ -36,7 +36,8 @@ Program ids used across the repo:
 
 ### Data APIs
 
-- `apps/indexer/src/dataApi.ts` implements `DataApiPort` over HTTP. Endpoint paths are
+- `packages/sdk/src/data/meteoraDataApi.ts` implements `DataApiPort` over HTTP; the indexer and the
+  API both construct it. Endpoint paths are
   `/pools/:pool/daily?days=` and `/wallets/:wallet/positions`, and the daily payload is normalised
   from `{ pool, data: [{ day, feesUsd, volumeUsd, liquidityUsd }] }`.
 

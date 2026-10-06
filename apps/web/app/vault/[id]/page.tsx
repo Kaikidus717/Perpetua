@@ -10,6 +10,9 @@ import { CARD, CARD_MUTED, LINK, PAGE, TD, TH } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 
+/// Stakes and claims land while the page is open, so keep re-reading.
+const LIVE_MS = 15_000;
+
 export default function VaultPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -18,11 +21,13 @@ export default function VaultPage() {
     queryKey: ["vault", id],
     queryFn: () => api.vault(id),
     enabled: Boolean(id),
+    refetchInterval: LIVE_MS,
   });
   const events = useQuery({
     queryKey: ["events", id],
     queryFn: () => api.events(id),
     enabled: Boolean(id),
+    refetchInterval: LIVE_MS,
   });
 
   if (vault.isError) {

@@ -7,9 +7,12 @@ import { compactUsd, count } from "@/lib/format";
 import { CARD_MUTED, PAGE } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 
+/// These numbers are meant to be live, so re-read them while the page is open.
+const LIVE_MS = 15_000;
+
 export default function StatsPage() {
-  const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats });
-  const vaults = useQuery({ queryKey: ["vaults"], queryFn: api.vaults });
+  const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats, refetchInterval: LIVE_MS });
+  const vaults = useQuery({ queryKey: ["vaults"], queryFn: api.vaults, refetchInterval: LIVE_MS });
   const offline = stats.isError || vaults.isError;
 
   return (
@@ -28,7 +31,7 @@ export default function StatsPage() {
         <Stat label="Positions securitized" value={count(stats.data?.stats.positionsSecuritized)} />
         <Stat label="USD fees paid out" value={compactUsd(stats.data?.stats.feesDistributedUsd)} />
         <Stat label="Holders" value={count(stats.data?.stats.uniqueStakers)} />
-        <Stat label="DLMM volume" value={compactUsd(stats.data?.stats.dlmmVolumeUsd)} />
+        <Stat label="Trading volume" value={compactUsd(stats.data?.stats.dlmmVolumeUsd)} />
         <Stat label="Share tokens live" value={count(vaults.data?.vaults.length)} />
       </div>
     </div>

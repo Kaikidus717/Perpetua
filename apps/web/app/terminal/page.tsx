@@ -143,7 +143,7 @@ export default function TerminalPage() {
 
           {ladder.data ? (
             <section className="space-y-4">
-              <h2 className="text-center text-base font-semibold text-ink">DLMM ask ladder</h2>
+              <h2 className="text-center text-base font-semibold text-ink">Shares for sale</h2>
               <p className="tnum text-center text-sm text-muted">
                 {ladder.data.plan.bins.length} bins · {usd(ladder.data.plan.rangeLowUsd, 6)} –{" "}
                 {usd(ladder.data.plan.rangeHighUsd, 6)} · weighted average{" "}

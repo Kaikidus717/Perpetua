@@ -10,9 +10,12 @@ import { CARD_MUTED, LINK, PAGE } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
+/// These numbers are meant to be live, so re-read them while the page is open.
+const LIVE_MS = 15_000;
+
 export default function VaultsPage() {
-  const vaults = useQuery({ queryKey: ["vaults"], queryFn: api.vaults });
-  const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats });
+  const vaults = useQuery({ queryKey: ["vaults"], queryFn: api.vaults, refetchInterval: LIVE_MS });
+  const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats, refetchInterval: LIVE_MS });
   const offline = stats.isError || vaults.isError;
 
   return (

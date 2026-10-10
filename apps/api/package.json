@@ -27,6 +27,7 @@
   "dependencies": {
     "@coral-xyz/anchor": "0.32.1",
     "@hono/node-server": "2.1.3",
+    "@perpetua/mcp": "workspace:*",
     "@perpetua/sdk": "workspace:*",
     "@perpetua/shared": "workspace:*",
     "@perpetua/valuation": "workspace:*",

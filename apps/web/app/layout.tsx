@@ -5,9 +5,9 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Perpetua — own a slice of a pool's fees",
+  title: "Perpetua — the fee-rights exchange",
   description:
-    "Perpetua turns the trading fees a locked Meteora pool earns into shares you can price and buy.",
+    "Turn the trading fees a locked Meteora pool earns into priced, tradable shares you can buy, sell and claim.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

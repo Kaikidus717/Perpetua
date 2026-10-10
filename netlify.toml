@@ -1,0 +1,29 @@
+[build]
+  base = "."
+  # `node netlify/api/build.mjs` emits the self-contained function bundle at
+  # `netlify/api/api.bundle.cjs`, which the function at `netlify/functions/api.ts` re-exports. See that
+  # script for why the function is prebundled rather than left to Netlify's bundler.
+  command = "pnpm install --frozen-lockfile && pnpm build && node netlify/api/build.mjs"
+  publish = "apps/web/.next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # The web calls the API same-origin, so there is no CORS to configure and no second host to keep
+  # alive. The Netlify Function at /api/* is the API.
+  NEXT_PUBLIC_API_URL = "/api"
+  # Both clusters are wired up in the function; this is the one a request gets when it does not name
+  # another. Mainnet is the default because pools and launches live there — a devnet wallet still gets
+  # devnet, because the pages ask where an address lives before they call anything.
+  CLUSTER = "mainnet-beta"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200

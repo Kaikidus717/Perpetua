@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Perpetua">
+  <rect width="32" height="32" rx="7" fill="#18181b"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#ffffff" stroke-width="2.4"/>
+  <path d="M16 16 L16 7 A9 9 0 0 1 25 16 Z" fill="#ffffff"/>
+</svg>

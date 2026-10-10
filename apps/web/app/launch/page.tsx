@@ -1,9 +1,10 @@
 "use client";
 
+import { LaunchDeploy } from "@/components/LaunchDeploy";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { api } from "@/lib/api";
-import { CARD, CARD_MUTED, INPUT, PAGE, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
+import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, PAGE, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -44,6 +45,10 @@ export default function LaunchPage() {
     partnerLiquidityPct: 40,
     lockedPct: 20,
   });
+  /// Meteora's DBC and DAMM v2 programs run on both clusters, so a launch is not tied to devnet:
+  /// mainnet is the default because that is where a token is worth something, and devnet is there to
+  /// rehearse the whole flow for free.
+  const [cluster, setCluster] = useState<"devnet" | "mainnet-beta">("mainnet-beta");
 
   const preset = useQuery({ queryKey: ["preset", form], queryFn: () => api.preset(form) });
 
@@ -73,8 +78,28 @@ export default function LaunchPage() {
     <div className={PAGE}>
       <PageHeader
         title="Plan a launch"
-        description="Work out how a new pool's trading fees and liquidity would be divided before you commit to anything. This is a plan, not a deployment — nothing is created on-chain from this page."
+        description="Work out how a new pool's trading fees and liquidity would be divided, check the plan against the rules a launch has to satisfy, then deploy it — all from this page."
       />
+
+      <section className={`${CARD} space-y-2 p-5`}>
+        <span className="text-sm text-ink">Where to launch</span>
+        <div className="flex flex-wrap gap-2">
+          {(["mainnet-beta", "devnet"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setCluster(option)}
+              className={cluster === option ? BUTTON_PRIMARY : BUTTON}
+            >
+              {option === "mainnet-beta" ? "Mainnet" : "Devnet"}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted">
+          Both networks run Meteora&apos;s programs. Mainnet is where a token has real traders and real
+          liquidity; devnet is where you can rehearse the same flow for free.
+        </p>
+      </section>
 
       <section className={`${CARD} grid gap-5 p-5 sm:grid-cols-2`}>
         {FIELDS.map((field) => (
@@ -157,6 +182,14 @@ export default function LaunchPage() {
           shares page.
         </p>
       </Section>
+
+      <LaunchDeploy
+        creatorTradingFeePct={form.creatorTradingFeePct}
+        creatorLiquidityPct={form.creatorLiquidityPct}
+        partnerLiquidityPct={form.partnerLiquidityPct}
+        lockedPct={form.lockedPct}
+        cluster={cluster}
+      />
     </div>
   );
 }

@@ -15,19 +15,21 @@ import {
   createSqrtPrices,
   deriveDbcPoolAddress,
 } from "@meteora-ag/dynamic-bonding-curve-sdk";
-import { type Connection, Keypair, PublicKey, sendAndConfirmTransaction } from "@solana/web3.js";
-import type { DbcConfigParams, DbcLaunchResult, DbcPoolParams, DbcPort } from "../ports.js";
+import { type Connection, PublicKey } from "@solana/web3.js";
+import type { DbcLaunchParams, DbcLaunchResult, DbcPort } from "../ports.js";
 
 const DEFAULT_CURVE_PRICES = [0.000000001, 0.00000000105, 0.000000002, 0.000001];
 const DEFAULT_LIQUIDITY_WEIGHTS = [2, 1, 1];
 
 export interface DbcAdapterOptions {
   connection: Connection;
-  signer: Keypair;
   curvePrices?: number[];
   liquidityWeights?: number[];
 }
 
+/// Builds the financeable DBC launch: the config and the pool it governs, in one unsigned
+/// transaction. Nothing is signed here — the creator's wallet signs, so no key material reaches the
+/// API process.
 export class DbcAdapter implements DbcPort {
   private readonly client: DynamicBondingCurveClient;
 
@@ -35,8 +37,7 @@ export class DbcAdapter implements DbcPort {
     this.client = DynamicBondingCurveClient.create(options.connection, "confirmed");
   }
 
-  async createConfig(params: DbcConfigParams): Promise<string> {
-    const config = Keypair.generate();
+  async buildLaunch(params: DbcLaunchParams): Promise<DbcLaunchResult> {
     const sqrtPrices = createSqrtPrices(
       this.options.curvePrices ?? DEFAULT_CURVE_PRICES,
       TokenDecimal.SIX,
@@ -97,41 +98,31 @@ export class DbcAdapter implements DbcPort {
       liquidityWeights: this.options.liquidityWeights ?? DEFAULT_LIQUIDITY_WEIGHTS,
     });
 
-    const transaction = await this.client.partner.createConfig({
-      ...curve,
-      config: config.publicKey,
-      feeClaimer: new PublicKey(params.feeClaimer),
-      leftoverReceiver: new PublicKey(params.leftoverReceiver),
-      quoteMint: new PublicKey(params.quoteMint),
-      payer: this.options.signer.publicKey,
-    });
-
-    await sendAndConfirmTransaction(this.options.connection, transaction, [
-      this.options.signer,
-      config,
-    ]);
-    return config.publicKey.toBase58();
-  }
-
-  async createPool(params: DbcPoolParams): Promise<DbcLaunchResult> {
+    const creator = new PublicKey(params.creator);
     const config = new PublicKey(params.config);
     const baseMint = new PublicKey(params.baseMint);
+    const quoteMint = new PublicKey(params.quoteMint);
 
-    const transaction = await this.client.creator.createPool({
-      baseMint,
+    const transaction = await this.client.partner.createConfigAndPool({
+      ...curve,
       config,
-      name: params.name,
-      symbol: params.symbol,
-      uri: params.uri,
-      payer: this.options.signer.publicKey,
-      poolCreator: this.options.signer.publicKey,
+      feeClaimer: new PublicKey(params.feeClaimer),
+      leftoverReceiver: new PublicKey(params.leftoverReceiver),
+      quoteMint,
+      payer: creator,
+      preCreatePoolParam: {
+        name: params.name,
+        symbol: params.symbol,
+        uri: params.uri,
+        poolCreator: creator,
+        baseMint,
+      },
     });
-
-    await sendAndConfirmTransaction(this.options.connection, transaction, [this.options.signer]);
 
     return {
       config: params.config,
-      pool: deriveDbcPoolAddress(new PublicKey(params.quoteMint), baseMint, config).toBase58(),
+      pool: deriveDbcPoolAddress(quoteMint, baseMint, config).toBase58(),
+      transaction,
     };
   }
 }

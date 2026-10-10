@@ -1,12 +1,28 @@
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
 import { PerpetuaVaultClient, findConfigPda, findStakePda, findVaultPda } from "@perpetua/sdk";
-import type { ClaimAccounts, VaultAccountData } from "@perpetua/sdk";
+import type {
+  ClaimAccounts,
+  DbcLaunchParams,
+  DlmmPreset,
+  LadderPlan,
+  VaultAccountData,
+} from "@perpetua/sdk";
 import { DammV2Adapter } from "@perpetua/sdk/adapters/damm-v2";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { DbcAdapter } from "@perpetua/sdk/adapters/dbc";
+import { DlmmAdapter } from "@perpetua/sdk/adapters/dlmm";
+import { type Cluster, resolveNetwork } from "@perpetua/shared";
+import {
+  MINT_SIZE,
+  TOKEN_PROGRAM_ID,
+  createInitializeMintInstruction,
+  getAssociatedTokenAddressSync,
+  getMinimumBalanceForRentExemptMint,
+} from "@solana/spl-token";
 import {
   type Connection,
   Keypair,
   PublicKey,
+  SystemProgram,
   Transaction,
   type TransactionInstruction,
   type VersionedTransaction,
@@ -227,4 +243,148 @@ export async function buildHarvest(
   });
 
   return serialize(connection, instruction, params.owner);
+}
+
+/// Same contract as `serialize`, for builders that hand back a whole SDK transaction instead of a
+/// single instruction.
+async function serializeTransaction(
+  connection: Connection,
+  transaction: Transaction,
+  feePayer: string,
+): Promise<string> {
+  transaction.feePayer = new PublicKey(feePayer);
+  transaction.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
+  return transaction
+    .serialize({ requireAllSignatures: false, verifySignatures: false })
+    .toString("base64");
+}
+
+function cluster(): Cluster {
+  return resolveNetwork(process.env.CLUSTER).cluster;
+}
+
+export interface OpenSaleParams {
+  owner: string;
+  shareMint: string;
+  quoteMint: string;
+  presetParameter: string;
+  binStep: number;
+  baseFactor: string;
+  initialPrice: number;
+}
+
+export interface OpenSaleResult {
+  pool: string;
+  created: boolean;
+  transaction: string | null;
+}
+
+/// Builds the unsigned `createLbPair2` transaction for the pFEE/quote pair. When the pair already
+/// exists there is nothing to sign, so `created` is false and `transaction` is null.
+export async function buildOpenSale(
+  connection: Connection,
+  params: OpenSaleParams,
+): Promise<OpenSaleResult> {
+  const adapter = new DlmmAdapter({ connection, cluster: cluster() });
+  const result = await adapter.buildCreatePair(params);
+  return {
+    pool: result.pool,
+    created: result.created,
+    transaction: result.transaction
+      ? await serializeTransaction(connection, result.transaction, params.owner)
+      : null,
+  };
+}
+
+export interface SeedLadderParams {
+  owner: string;
+  poolAddress: string;
+  shareMint: string;
+  quoteMint: string;
+  positionPubKey: string;
+  binStep: number;
+  plan: LadderPlan;
+}
+
+export interface SeedLadderResponse {
+  positionAddress: string;
+  minBinId: number;
+  maxBinId: number;
+  sharesOffered: number;
+  shareIsTokenX: boolean;
+  transaction: string;
+}
+
+/// Builds the unsigned one-sided ask ladder. The position account is signed by the caller's wallet,
+/// which generated it.
+export async function buildSeedLadder(
+  connection: Connection,
+  params: SeedLadderParams,
+): Promise<SeedLadderResponse> {
+  const adapter = new DlmmAdapter({ connection, cluster: cluster() });
+  const result = await adapter.buildSeedLadder(params);
+  return {
+    positionAddress: result.positionAddress,
+    minBinId: result.minBinId,
+    maxBinId: result.maxBinId,
+    sharesOffered: result.sharesOffered,
+    shareIsTokenX: result.shareIsTokenX,
+    transaction: await serializeTransaction(connection, result.transaction, params.owner),
+  };
+}
+
+export interface CreateMintParams {
+  payer: string;
+  mint: string;
+  decimals: number;
+}
+
+/// Builds the base mint a DBC launch needs: a plain SPL mint owned by the creator. The mint keypair
+/// is generated on the client and signs; DBC mints the supply into the curve at pool creation.
+export async function buildCreateMint(
+  connection: Connection,
+  params: CreateMintParams,
+): Promise<string> {
+  const payer = new PublicKey(params.payer);
+  const mint = new PublicKey(params.mint);
+  const rent = await getMinimumBalanceForRentExemptMint(connection);
+  const transaction = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: payer,
+      newAccountPubkey: mint,
+      space: MINT_SIZE,
+      lamports: rent,
+      programId: TOKEN_PROGRAM_ID,
+    }),
+    createInitializeMintInstruction(mint, params.decimals, payer, payer),
+  );
+  return serializeTransaction(connection, transaction, params.payer);
+}
+
+export type LaunchParams = DbcLaunchParams;
+
+export interface LaunchResponse {
+  config: string;
+  pool: string;
+  transaction: string;
+}
+
+/// Builds the unsigned financeable launch: the DBC config and its pool, in one transaction.
+export async function buildLaunch(
+  connection: Connection,
+  params: LaunchParams,
+): Promise<LaunchResponse> {
+  const adapter = new DbcAdapter({ connection });
+  const result = await adapter.buildLaunch(params);
+  return {
+    config: result.config,
+    pool: result.pool,
+    transaction: await serializeTransaction(connection, result.transaction, params.creator),
+  };
+}
+
+/// The DLMM presets available on this cluster, i.e. the bin steps a share pair may be created at.
+export async function listDlmmPresets(connection: Connection): Promise<DlmmPreset[]> {
+  const adapter = new DlmmAdapter({ connection, cluster: cluster() });
+  return adapter.listPresets();
 }

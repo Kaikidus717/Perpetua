@@ -15,7 +15,7 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
       >
         <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Perpetua failed to start</h1>
         <p style={{ color: "#6b7280", marginTop: "0.5rem" }}>
-          Check that the indexer API is reachable, then reload.
+          The page could not load. Reload to try again.
         </p>
         <button
           type="button"

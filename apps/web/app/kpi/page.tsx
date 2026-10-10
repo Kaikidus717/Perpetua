@@ -21,8 +21,8 @@ export default function StatsPage() {
 
       {offline ? (
         <div className={`${CARD_MUTED} px-6 py-8 text-center text-sm text-muted`}>
-          Cannot reach the indexer API, so nothing here is live. Start it with{" "}
-          <code className="font-mono">pnpm --filter @perpetua/api dev</code>.
+          Live figures are unavailable right now. Everything here fills back in as soon as the
+          connection returns.
         </div>
       ) : null}
 

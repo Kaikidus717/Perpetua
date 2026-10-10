@@ -1,771 +1,540 @@
-# Perpetua — the fee-rights exchange for Meteora
+# Perpetua — the fee-rights exchange
 
 > Turn the trading-fee stream of a **permanently locked Meteora DAMM v2 position** into a **priced,
 > tradable, claimable asset**.
 
-**Live on devnet** at `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2` — and the bytecode read back off
-the chain hashes **byte-for-byte** to the artifact the tests ran against.
+A permanently locked position is liquidity that can never be withdrawn — so the fees it earns keep
+arriving. Perpetua turns that fee stream into **1,000,000 SPL fee shares**. The shares price like a
+bond, trade on Meteora's DLMM, and pay out every time the pool is touched.
 
-| | |
-|---|---|
-| TypeScript | **154 tests** · `biome check` clean · `tsc` clean · `next build` green |
-| Rust | **26 tests** · `cargo clippy --all-targets -D warnings` clean |
-| Program | 9 instructions · 448,248 bytes · SBF verifier clean · deployed on devnet |
-| Shape | 5 workspace packages · 4 apps · 1 web UI · 1 MCP server |
+**Status:** 157 TypeScript tests · 26 Rust tests · `biome` clean · `tsc` clean · `next build` green. The
+program is deployed on devnet at `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2`.
 
----
+Four moving parts:
+
+- **Price the stream.** A decay-aware, discounted valuation model reads live on-chain fee history and
+  outputs fair value, a bear/base/bull range, fair value per share, implied APR and payback.
+- **Sell into a market.** A one-sided DLMM ask ladder, seeded around fair value, in place of an OTC
+  spreadsheet.
+- **Earn and exit safely.** Stake to earn, claim on touch. Every `stake` / `unstake` / `harvest`
+  claims *before* it touches accounting, so there is no JIT-sandwich window — and exit is never gated.
+- **Launch financeable.** A DBC preset that graduates to DAMM v2 with a permanently locked floor, so a
+  launch produces something securitizable.
 
 ## Table of contents
 
-- [What Perpetua is](#what-perpetua-is) — the thesis, and why the primitive already exists
-- [Architecture](#architecture) — the system, the lifecycle, and where the risk sits
-- [Repository map](#repository-map) — every directory, annotated
-- [Packages](#packages) — what each package is and what it exports
-- [Requirements](#requirements) · [Quickstart](#quickstart) — clone to running in five minutes
-- [The manual](#the-manual) — **step-by-step use of every page, plus the CLI and the MCP server**
-- [The program](#the-program) — accounts, instructions and the fee-accounting model
-- [API reference](#api-reference) — every route, every parameter
-- [The valuation model](#the-valuation-model) — the formula, the cohort prior, calibration
-- [Status](#status) — what is verified, and the exact test counts
-- [MCP server](#mcp-server) — five tools for other AI agents
-- [Commands](#commands) — every script in one table
-- [Testing](#testing) · [Security model](#security-model) · [Known limitations](#known-limitations)
-- [Troubleshooting](#troubleshooting) — the failures that actually happen
-- [Documentation index](#documentation-index) · [License](#license)
+- [How it works](#how-it-works) — the lifecycle, end to end
+- [Feature status](#feature-status) — what is wired, stated plainly
+- [Architecture](#architecture) · [Repository map](#repository-map)
+- [Requirements](#requirements) · [Quickstart](#quickstart) — clone to running
+- [Configuration](#configuration) — every environment variable
+- [Using the app](#using-the-app) — every page
+- [API reference](#api-reference) — every route
+- [The valuation model](#the-valuation-model)
+- [The on-chain program](#the-on-chain-program)
+- [Testing](#testing) · [Deployment](#deployment)
+- [Security model](#security-model) · [Known limitations](#known-limitations)
+- [License](#license)
 
-## What Perpetua is
+## How it works
 
-Meteora already ships **Dynamic Fee Sharing**: a PDA fee vault can own a DAMM v2 position NFT, claim
-its fees by CPI and split them with fee-per-share accounting. But it is capped at 2–5 fixed recipients
-and its shares are **not transferable**.
+```
+   DBC launch            DAMM v2             create_vault          DLMM one-sided          stake /
+   (financeable   →   graduates, mints   →   takes the locked   →   ask ladder seeded   →   harvest;
+    preset)             locked NFTs          position NFT,          around fair value       crank_claim
+                                             mints 1,000,000                                pulls fees in
+                                             fee shares
+```
 
-Perpetua extends that primitive into a market:
+1. **Launch.** A creator deploys a token through Meteora's Dynamic Bonding Curve using Perpetua's
+   *financeable* preset: quote-only fees, non-compounding, with a permanently locked liquidity floor.
+2. **Graduate.** The curve migrates to DAMM v2, which mints the creator/partner position NFTs. The
+   permanently locked one is the asset Perpetua can securitize.
+3. **Securitize.** `create_vault` takes custody of the locked position's NFT account and mints
+   1,000,000 SPL fee shares to the creator. The program can never remove liquidity or close the
+   position, so the principal is unreachable by construction.
+4. **Sell.** The shares are listed on a `pFEE/quote` DLMM pair as a one-sided ask ladder priced around
+   fair value. Buyers trade against a market.
+5. **Earn.** Holders stake shares. `stake`, `unstake` and `harvest` each CPI-claim the position's fees
+   first, credit them by balance diff into a fee-per-share accumulator, and pay out on touch.
 
-1. **Tradable SPL fee shares** for any number of holders — stake to earn, claim on touch.
-2. A **valuation engine** that prices a fee stream: decay-aware, discounted, and calibrated against
-   synthetic pools whose decay rate is known.
-3. A **DLMM one-sided ask ladder** as the primary sale venue, so the sale is a market rather than a
-   spreadsheet.
-4. A **DBC "financeable launch" preset**, so launch → graduate → finance is one flow instead of three.
+## Feature status
 
-The pitch: *cash-flow tokens — a new asset class on Meteora's liquidity layer.*
+Stated plainly, because a reviewer will check.
+
+| Feature | Status |
+|---|---|
+| Decay-aware valuation engine | **Live.** Pure TypeScript; `/v1/pools/:pool/yield`, `/v1/pools/:pool/series`, `/v1/valuation/:position`. Backtested on synthetic pools. |
+| Stake-to-earn + claim-on-touch | **Live.** On-chain (`stake`/`unstake`/`harvest`/`crank_claim`) and wired to the vault page. |
+| Automated DLMM ask ladder | **Wired.** `POST /v1/tx/open-sale` creates the pair, `POST /v1/tx/seed-ladder` seeds the ladder; the vault page drives both. The bin-id placement is the one number to confirm on a devnet run. |
+| Financeable DBC launch preset | **Wired.** `POST /v1/tx/create-mint` + `POST /v1/tx/launch` deploy token → config → pool; the launch page drives both. |
+| Position vaults, pricing, launch | **Live** on devnet. |
 
 ## Architecture
 
 ```
-   ┌────────────────────────── Web · Next.js (:3000) ────────────────────────────┐
-   │  /           /terminal   /launch   /securitize   /vault/[id]   /kpi          │
-   └───────────────▲───────────────────────────────────────────▲─────────────────┘
-                   │ REST + SSE                                │ pricing (pure TS)
-   ┌───────────────┴────────────────┐             ┌────────────┴─────────────────┐
-   │  API · Hono (:8787)            │             │  @perpetua/valuation         │
-   │   · Store port                 │             │   decay fit → scenarios      │
-   │       InMemoryStore (default)  │             │   no chain dependency        │
-   │       DrizzleStore (Postgres)  │             └──────────────────────────────┘
-   │   · /v1/tx/* builds unsigned   │
-   └───────────────▲────────────────┘
-                   │ reads                            ┌──────────────────────────────────┐
-   ┌───────────────┴────────────────┐                 │  Solana RPC · Meteora data APIs  │
-   │  Indexer + Keeper              │◄────────────────┤  cp-amm-sdk · dlmm · dbc SDKs    │
-   │   vault accounts, Anchor events│                 └──────────────────────────────────┘
-   │   crank_claim when it pays     │
-   └───────────────┬────────────────┘
-                   │ instructions
-   ┌───────────────▼─────────────────────────────────────────────────────────────┐
-   │  perpetua_vault · Anchor · G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2      │
-   │      CPI ──► DAMM v2 `claim_position_fee`   (the vault PDA signs)           │
-   └─────────────────────────────────────────────────────────────────────────────┘
+   ┌─────────────────────── Web · Next.js (:3000) ────────────────────────┐
+   │  /  ·  /terminal  ·  /launch  ·  /securitize  ·  /vault/[id]  ·  /kpi │
+   └───────────▲──────────────────────────────────────────────▲──────────┘
+               │ REST + SSE                                    │ pure-TS pricing
+   ┌───────────┴───────────────┐                  ┌────────────┴───────────┐
+   │  API · Hono (:8787/:8788) │                  │  @perpetua/valuation   │
+   │  valuations · positions   │                  │  decay · discount · PV │
+   │  unsigned tx builders     │                  └────────────────────────┘
+   └───────┬───────────┬───────┘
+           │           │
+     Meteora data   Solana RPC            ┌─────────────────────────────┐
+     API (fees)     (positions,           │  perpetua_vault (Anchor)    │
+                     tx build)            │  vault · stake · harvest    │
+                                          └─────────────────────────────┘
 ```
 
-### The lifecycle
-
-```
-  1. LAUNCH            2. GRADUATE          3. SECURITIZE        4. SELL           5. EARN
-  ───────────          ───────────          ────────────         ───────           ───────
-  DBC with the    →    DAMM v2 mints   →    create_vault    →    DLMM one-sided →  stake shares,
-  financeable          the creator and      takes the NFT,       ask ladder        harvest fees;
-  preset               partner position     mints 1,000,000     seeded around     crank_claim
-                       NFTs                 share tokens        fair value        pulls fees in
-```
-
-### The idea in one sentence
-
-A position that is *permanently locked* has nothing left to do but earn, so its fee stream is a
-well-defined cash flow — and a cash flow can be priced, split into shares, and sold.
-
-### Where the risk sits
-
-The vault custodies a **position NFT account**, never funds. There is no instruction that removes
-liquidity, closes a position or changes a lock, so the principal is unreachable by construction. The
-admin can pause **entry** (`create_vault`, `stake`) but can never pause an exit. The full table is
-under [Security model](#security-model).
-
+The **API never holds a key.** Every `/v1/tx/*` route returns an unsigned, base64-encoded transaction;
+the browser wallet signs it. The only extra signatures a flow needs (a share mint, a DLMM position
+account, a DBC config) are generated *in the browser* and partial-signed there.
 
 ## Repository map
 
 ```
-perpetua/
-├── programs/perpetua_vault/          the Anchor program (Rust)
-│   ├── src/lib.rs                    declare_id! and the #[program] entrypoints
-│   ├── src/instructions/             one file per instruction
-│   │     init_config.rs  create_vault.rs  crank_claim.rs  harvest.rs
-│   │     stake.rs  unstake.rs  admin.rs (set_paused, set_risk_flags)
-│   │     touch.rs                    NOT an instruction — the shared claim path
-│   ├── src/state/                    Config, Vault and Stake account layouts
-│   ├── src/cpi.rs                    claim_position_fee CPI + the pinned wire format
-│   ├── src/extensions.rs             Token-2022 TLV walk (refuses TransferHook)
-│   ├── src/math.rs                   fee-per-share accrual, carry, protocol fee
-│   ├── src/constants.rs              seeds, precision, pinned program ids, offsets
-│   ├── src/errors.rs  src/events.rs  error codes and Anchor events
-│   ├── idl/                          cp_amm.json, perpetua_vault.json (generated)
-│   └── Cargo.toml
-├── packages/
-│   ├── shared/                       types, program ids, network resolution
-│   ├── valuation/                    the pricing model (pure TS) + backtest/
-│   ├── sdk/                          on-chain client, ladder, preset, bids, adapters
-│   ├── stock-kit/                    closed-market fee curve, anchored start price
-│   └── mcp/                          Model Context Protocol server
-├── apps/
-│   ├── api/                          Hono REST + SSE (src/app.ts is the route table)
-│   ├── indexer/                      Meteora data client, Anchor event decoding
-│   ├── keeper/                       the crank_claim bot
-│   └── web/                          Next.js App Router UI
-├── tests/
-│   ├── litesvm/                      boots the real artifact; flow.rs drives the flow
-│   └── mock-cp-amm/                  the cp-amm stand-in used by flow.rs
-├── scripts/
-│   ├── gen-idl.mjs                   the IDL single source of truth
-│   ├── program-id.mjs                check/sync Anchor.toml, install the keypair
-│   ├── faucet.mjs                    payer-aware devnet funding
-│   └── verify-spec.mjs               asserts the spec edits stayed in place
-├── keys/perpetua_vault-devnet.json   the committed devnet program keypair
-├── docs/                             DEVNET, ARCHITECTURE, VALUATION, SECURITY, …
-├── Anchor.toml  package.json  pnpm-workspace.yaml  turbo.json  biome.json
-└── PERPETUA_BUILD_SPEC.md            the build spec this repository implements
+apps/
+  web/         Next.js 16 UI — the six pages above.
+  api/         Hono API: valuations, positions, and the unsigned transaction builders.
+  indexer/     Watches vault events and writes vault/stat rows.
+  keeper/      Cranks `crank_claim` on a interval when a vault has fees to pull.
+packages/
+  shared/      Types, program ids, network resolution, resilient RPC failover.
+  valuation/   The pricing model. Pure TypeScript, zero chain dependency.
+  sdk/         Everything that touches the chain or the Meteora SDKs.
+  stock-kit/   Closed-market fee curve + anchored start price (stock-quoted launches).
+  mcp/         An MCP server exposing Perpetua to other AI agents.
+programs/
+  perpetua_vault/   The Anchor program (9 instructions).
+netlify/
+  api/         The API and MCP entrypoints, prebundled into one self-contained function file.
+  functions/   The function Netlify serves at /api/* (REST and MCP on the same origin).
 ```
 
-## Packages
+### What each SDK module is
 
-| Package | What it is | Key exports |
-|---|---|---|
-| `@perpetua/shared` | types, program ids and network resolution — the vocabulary | `PROGRAM_IDS`, `resolveNetwork`, `CP_AMM_POOL_AUTHORITY`, `ValuationInput`, `VaultSummary` |
-| `@perpetua/valuation` | the pricing model: pure TypeScript, zero chain dependency | `valuePosition`, `estimateDecay`, `cohortPriorFor`, `analyzeCompounding`, `sessionAt`, `splitFeesBySession`, `inputsHash`, `MODEL_VERSION` |
-| `@perpetua/sdk` | everything that touches the chain or the Meteora SDKs | `PerpetuaVaultClient`, `findVaultPda`, `findConfigPda`, `buildLadder`, `buildFinanceablePreset`, `evaluateEligibility`, `convictionScore`, `buildDepthChart`, `DammV2Adapter`, `DlmmAdapter`, `DbcAdapter`, `MeteoraDataApi` |
-| `@perpetua/stock-kit` | the differentiator for stock-quoted launches | `buildClosedMarketFeeCurve`, `anchoredStart` |
-| `@perpetua/mcp` | Perpetua for other AI agents | `createServer`, `TOOLS`, the stdio entrypoint |
-
-`@perpetua/sdk` publishes subpath exports — `./ports`, `./sale`, `./bids`, `./bins`, `./dbc`,
-`./math`, `./positions`, `./data`, `./adapters/damm-v2`, `./adapters/dlmm`, `./adapters/dbc` — so a
-consumer can import one narrow surface without pulling in the Meteora SDKs.
-
+| Module | Responsibility |
+|---|---|
+| `data/meteoraDataApi` | Fee history from Meteora's DAMM v2 data API — the only source of fee history. |
+| `adapters/dammV2` | Reads DAMM v2 positions, lock buckets, and derives the `claim_position_fee` account set. |
+| `adapters/dlmm` | Builds the `pFEE/quote` pair (`createLbPair2`, addressed with `deriveLbPair2`) and the one-sided ask ladder. |
+| `adapters/dbc` | Builds the financeable DBC `createConfigAndPool`. |
+| `sale/ladder` | The front-weighted, geometric ask-ladder algorithm (pure). |
+| `positions/eligibility` | `unlocked == 0 && vested == 0 && permanentLocked > 0`, decided once and echoed to the UI. |
+| `vault/client` | A typed client over the program IDL, plus instruction builders. |
 
 ## Requirements
 
-| Tool | Version | Needed for |
-|---|---|---|
-| Node | ≥ 22 | everything TypeScript |
-| pnpm | 9.15.9 (`packageManager`) | the workspace |
-| Rust + Anchor | 0.32.1 | the program only |
-| Solana CLI + platform tools | recent | SBF builds and devnet deploys only |
-
-The web app and the API need nothing beyond Node — no database, no wallet, no SOL. Only the program
-and the devnet deployment need the Rust toolchain.
+- **Node 22+** and **pnpm 9.15+** (the repo pins `pnpm@9.15.9`).
+- For the on-chain program: **Rust** with the Solana SBF toolchain and **Anchor 0.32**.
 
 ## Quickstart
 
 ```bash
 pnpm install
-pnpm build                                   # turbo: every package and app
 
-pnpm --filter @perpetua/api dev              # API + SSE  → http://localhost:8787
-pnpm --filter @perpetua/web dev              # web        → http://localhost:3000
+# Development — web on :3000, devnet API on :8787
+pnpm --filter @perpetua/api dev     # terminal A
+pnpm --filter @perpetua/web dev     # terminal B
+
+# Or run everything the API needs at once
+pnpm dev                            # web, api, indexer, keeper
 ```
 
-Open <http://localhost:3000>. Every figure on every page comes from the indexer API, Meteora's data API
-or the chain itself — there is no bundled sample data to fall back on — so start the API first and
-everything you see is live.
-
-Or run the whole stack in watch mode:
+To run a **mainnet** API alongside the devnet one:
 
 ```bash
-pnpm dev                                     # web, api, indexer, keeper
+CLUSTER=mainnet-beta PORT=8788 pnpm --filter @perpetua/api dev
 ```
 
-Verify the checkout:
+Then point the UI at either cluster without rebuilding — the API base is a runtime switch:
+
+```
+http://localhost:3000/?api=http://localhost:8788    # mainnet API
+http://localhost:3000/?api=http://localhost:8787    # back to devnet
+```
+
+### Production build locally
+
+```bash
+pnpm build
+node apps/api/dist/server.js                                        # devnet API on :8787
+CLUSTER=mainnet-beta PORT=8788 node apps/api/dist/server.js         # mainnet API on :8788
+pnpm --filter @perpetua/web start                                   # web on :3000
+```
+
+Verify a checkout:
 
 ```bash
 pnpm test && pnpm lint && pnpm typecheck
 ```
 
-The API uses an in-memory store by default. To switch to Postgres:
-
-```bash
-cp .env.example .env                         # then set DATABASE_URL
-pnpm --filter @perpetua/api db:generate      # drizzle-kit migrations
-```
-
-## The manual
-
-### 0. Configure (optional)
+## Configuration
 
 Copy [.env.example](.env.example) to `.env`. Every value has a working default for local use.
 
 | Variable | Default | Used by |
 |---|---|---|
 | `PORT` | `8787` | api |
-| `RPC_URL` | the devnet RPC | api, indexer, keeper |
-| `RPC_URLS` | the cluster's public RPC | api, indexer, keeper — comma-separated; tried in order on 429, 408 and 5xx |
-| `CLUSTER` | `devnet` | api (`resolveNetwork`) |
+| `CLUSTER` | `devnet` | api |
+| `RPC_URL` | the cluster RPC | api, indexer, keeper |
+| `RPC_URLS` | the cluster's public RPC | api, indexer, keeper — comma-separated; tried in order on 429/408/5xx |
+| `METEORA_DATA_API` | `https://damm-v2.datapi.meteora.ag` | api, indexer |
 | `DATABASE_URL` | empty → in-memory | api |
 | `CORS_ORIGINS` | local web origins in dev | api |
-| `METEORA_DATA_API` | `https://damm-v2.datapi.meteora.ag` | api, indexer |
-| `KEYPAIR` | — | keeper, SDK scripts |
-| `CRANK_THRESHOLD_USD` | `0` | keeper |
-| `CRANK_INTERVAL_MS` | `120000` | keeper |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8787` | web |
-| `PERPETUA_API_URL` | `http://localhost:8787` | mcp |
+| `NEXT_PUBLIC_RPC_URL` | devnet RPC | web — the RPC the browser signs against, and the cluster vault, position and transaction links open on. Pool links always open on Solscan mainnet, because fee history only exists there. |
+| `KEYPAIR` | — | keeper, SDK ops scripts |
+| `CRANK_THRESHOLD_USD` / `CRANK_INTERVAL_MS` | `0` / `120000` | keeper |
+| `PERPETUA_API_URL` | `https://perpetua-meteora.netlify.app/api` | mcp (stdio only; the hosted MCP endpoint needs none) |
 
-### 1. Vaults — `/`
+## Using the app
 
-The landing page. Reads `/v1/stats` for vaults, positions securitized, fees distributed and unique
-stakers, then lists every indexed vault from `/v1/vaults` with its pool, share mint and totals. Each
-row links into the vault page; "price any pool →" goes to the terminal. **No wallet needed.**
-
-### 2. Pricing — `/terminal`
-
-Prices a fee stream without any wallet, which is the fastest way to understand the model.
-
-1. Paste a DAMM v2 pool address.
-2. Press **Price**.
-
-You get fair value and a bear/base/bull range, fair value per share, implied APR at fair value, a
-scenario table (daily decay λ, volume multiple, present value, payback days), the trailing daily fee
-chart, and the DLMM one-sided ask ladder the sale would use (bin, price, shares).
-
-Behind it: `GET /v1/pools/:pool/yield` and `GET /v1/pools/:pool/series`, computed by
-`@perpetua/valuation` — pure TypeScript, no chain access. See
-[The valuation model](#the-valuation-model).
-
-### 3. Launch plan — `/launch`
-
-Builds the **financeable** DBC preset: a launch that graduates to DAMM v2 with quote-only fee
-collection, non-compounding fees and a permanently locked liquidity floor, so the resulting creator
-position is securitizable.
-
-Set creator trading fee %, creator liquidity %, partner liquidity % and permanently locked %, and the
-page calls `GET /v1/dbc/preset`. It reports whether the preset is valid and prints the full preset
-JSON. Invalid combinations list the exact failing constraint.
-
-> The wizard that calls `create_config` and `create_pool` on DBC and waits for graduation is described
-> but not wired to a wallet; the preset it needs is real and validated.
-
-### 4. Create shares — `/securitize`
-
-Turns a permanently locked position into a share token.
-
-1. Connect a browser wallet, or paste a wallet address to scan. With no wallet extension present you
-   must paste an address.
-2. The page scans that wallet through `GET /v1/positions/:wallet/onchain` and shows the position's
-   unlocked, vested and permanently locked liquidity, plus an **eligibility verdict** returned by the
-   API.
-3. If eligible, press **Securitize position**. Your wallet signs `create_vault`; the API built the
-   transaction in `apps/api/src/tx.ts` and returned it base64, so the browser only needs
-   `@solana/web3.js` and the wallet — not Anchor, and not the Meteora SDKs.
-4. On success the page shows the share mint and a Solscan link.
-
-Eligibility is `unlocked == 0 && vested == 0 && permanentLocked > 0`, decided by
-`evaluateEligibility` in `@perpetua/sdk` on the API side and echoed to the UI — one implementation,
-not two. A mixed position must be split with DAMM v2 `split_position` first.
-
-### 5. Vault — `/vault/[id]`
-
-`{id}` is the vault PDA address. The page shows the vault's pool, share mint, totals and event feed,
-and exposes the four holder actions:
-
-| Action | Instruction | Notes |
+| Page | What it does | Wallet? |
 |---|---|---|
-| Stake | `stake` | claims outstanding fees first, then adds your shares |
-| Unstake | `unstake` | claims first, then removes shares |
-| Harvest | `harvest` | pays out the `pending_a/b` you are owed |
-| Crank | `crank_claim` | permissionless — anyone can pull the position's fees in |
+| **Vaults** `/` | Landing page. Reads `/v1/stats` and lists every indexed vault. | no |
+| **Pricing** `/terminal` | Paste any DAMM v2 pool; get fair value, a bear/base/bull range, implied APR, payback, the trailing fee chart and the ask ladder the sale would use. | no |
+| **Create shares** `/securitize` | Scans a wallet for locked positions, shows the eligibility verdict and the valuation preview, then signs `create_vault`. | yes |
+| **Launch plan** `/launch` | Sets the financeable DBC preset and validates it, then deploys token → config → pool. | yes |
+| **Vault** `/vault/[id]` | Position proof, totals, event feed, and the four holder actions — stake, unstake, harvest, crank — plus **Sell shares** (create the market, list the ladder). | yes |
+| **Stats** `/kpi` | Vaults, positions securitized, fees distributed, holders, trading volume. | no |
+| **Use with AI** `/mcp` | The one address that connects Claude, Cursor, VS Code or any other assistant to Perpetua. The same tools answer on `/api/mcp`. | no |
 
-Each transaction is built by the API (`POST /v1/tx/stake`, `/v1/tx/unstake`, `/v1/tx/harvest`,
-`/v1/tx/crank-claim`) and signed in the browser.
+## Live
 
-### 6. Stats — `/kpi`
+Everything below is deployed and answering right now.
 
-Vaults, positions securitized, USD fees distributed, unique stakers, DLMM volume and live share
-tokens — all straight from the indexer API, all traceable to on-chain accounts.
+| What | Where |
+|---|---|
+| App | <https://perpetua-meteora.netlify.app> |
+| API health | <https://perpetua-meteora.netlify.app/api/health> |
+| MCP, for AI assistants | <https://perpetua-meteora.netlify.app/api/mcp> |
+| Vault program (devnet, deployed + upgradeable) | <https://solscan.io/account/G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2?cluster=devnet> |
+| DAMM v2 program the vault custodies from | <https://solscan.io/account/cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG> |
+| DLMM program the share ladder prices into | <https://solscan.io/account/LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo> |
 
-### 7. From a terminal
+### Devnet securitization events
 
-```bash
-# 1. the program (needs the Solana toolchain)
-anchor build
-pnpm program:keypair                               # install keys/perpetua_vault-devnet.json
-cargo test --workspace                             # 26 tests
+`create_vault` is the instruction that turns a locked DAMM v2 position into shares. These are the
+transactions that actually did it on devnet — read straight from the chain, each one confirmed and
+carrying `Instruction: CreateVault` in its logs:
 
-# 2. devnet funding and deploy
-pnpm ops:faucet -- --dry-run                       # how much SOL the deploy still needs
-pnpm ops:faucet
-anchor deploy --provider.cluster devnet
+| Transaction | Vault it created |
+|---|---|
+| <https://solscan.io/tx/2GVp7qEasEckFTcCNWQvENGvUaa4PHRnoBcpaadaW9iP1eXLbHLnGZyKERi7EhiDd6ArZkcTBBSb2V9hC5WjpiH7?cluster=devnet> | <https://solscan.io/account/9F46yfJ8Sxs8ceR2MP1C8YARSdZ3wNPWBHMwB7nbrBSA?cluster=devnet> |
+| <https://solscan.io/tx/JoSsNrhBmbergmhc9YCe8nD2ktcrWCK3HQc5v4oTJej1sXH5CT5tRg5XLGzgH7NjvXbxa1YGndVK7YoxxgUQscj?cluster=devnet> | <https://solscan.io/account/FN2KbJTWjq8Ry3sTjomBQg9rqLfo6ReTSzjgrPV4jpgR?cluster=devnet> |
+| <https://solscan.io/tx/55revJozke4QmDuMXAKLHDHZZcMYBXY4VyMainbhAmghvSMTxWTn3ebz9g46NV2CuYK99PMy3VXsUBGwFwY8w3Xs?cluster=devnet> | <https://solscan.io/account/FTQcAaBm5toHdYkueAHteYkmYqTVyj7H3hdvbbE3jPLZ?cluster=devnet> |
+| <https://solscan.io/tx/565VN1CWurUdSLvRMVYPAhYCx28Y1GSxzUFEqoTYbn1Cg5CLUrCsyecoSJxK6TxvRasancazMm2jwqLmu9CQPxed?cluster=devnet> | <https://solscan.io/account/GSstL6dn4TtjMT2FZf7ENddDwuC4B2dwc1KtHaP2SAWK?cluster=devnet> |
+| <https://solscan.io/tx/39LHDreShZmueCth18r49sS81nBYVRm88F2RULwgmbkTqwoEtjhpGU8qPxXVW48DyNJ88DnSkMe5HpAvB59yvY4y?cluster=devnet> | <https://solscan.io/account/2A5YvCy74KQPNVS16bhRJjgRPmHn6bm6fTfjpoPV5ySK?cluster=devnet> |
+| <https://solscan.io/tx/3D6W5ZokB1MLcrHUVsKEjk3aN4kR2RPfD93aVbJHW75h9euwE6LgQYjaxvFMj5wZRp52opaVLbHYF9a5G1rrL387?cluster=devnet> | <https://solscan.io/account/5KCYoC2wriNqmVf2gfa8Ng3LXWrShHn9N1fPZd4gWq1b?cluster=devnet> |
+| <https://solscan.io/tx/2fAhHErpGuxCRf2r7SUJrqSD5cCVWpxJocgJfFc9nGrTvkVd7M1M1GihC9nGNi8upZtDNXe7P8BT3yVTm9SGZv5Y?cluster=devnet> | <https://solscan.io/account/7R9DPunKZVjgYWbyAFxT6uPYmAAuFA7S89ReZQFbhjwM?cluster=devnet> |
 
-# 3. inspect what the repo builds against
-pnpm --filter @perpetua/sdk ops:extract-idls       # dump the Meteora IDLs
-pnpm --filter @perpetua/sdk ops:verify-offsets     # check offsets against 11 live positions
+Ten vault accounts live on devnet in total. The hosted API keeps its vault list in memory and nothing
+indexes devnet into it, so the Vaults page starts empty — the chain is where the real ones are.
 
-# 4. run the flow end to end on devnet
-KEYPAIR=~/.config/solana/devnet.json pnpm --filter @perpetua/sdk ops:devnet-e2e
-```
+### The whole lifecycle, run end to end on devnet
 
-`ops:create-vault` builds and sends a single `create_vault` from a local keypair, reading `POSITION`,
-`POOL`, `POSITION_NFT_MINT`, `POSITION_NFT_ACCOUNT`, `POSITION_NFT_PROGRAM`, `TOKEN_A_MINT`,
-`TOKEN_B_MINT`, `TOKEN_A_PROGRAM`, `TOKEN_B_PROGRAM` and `CP_AMM_PROGRAM` from the environment.
+`pnpm --filter @perpetua/sdk ops:devnet-e2e` does the lot: it mints two tokens, opens a DAMM v2 pool,
+locks a position forever, securitizes it into a vault, swaps so the position earns real fees, then
+cranks, stakes and harvests. A full run, confirmed on-chain:
 
-### 8. From an AI agent
+| Step | Result |
+|---|---|
+| Permanently locked position | `CK1YFDFHbx2mEqU5To6JH6T5wzvwBQqzYogMVcbYBNPL` in pool `D51o2cwMxPJZjUxCJqBwxomioQc53S7ucXjhRzXbFa5C` |
+| Vault created (shares issued) | `DA2TEH6F8tRdfMMc9gj3cyMcKv5A9EezBwJpGk1ndbvu` |
+| Share mint | `8u7GWxH5C4nA5Lqo9mGaB4ZRDUogXo3krcVvCL8LmGpg` |
+| Stake | 1,000,000,000,000 base units — the entire supply |
+| Crank claim | banked as carry while unstaked, then `claimed_b=308263` released to the staker |
+| Harvest | paid the staker out |
 
-```bash
-pnpm build
-PERPETUA_API_URL=http://localhost:8787 pnpm mcp
-```
+So creating shares, staking them, cranking the claim and harvesting all work against the real program,
+not a mock.
 
-The tool list and the client configuration are under [MCP server](#mcp-server).
+### Pools to paste into Pricing
 
+Real DAMM v2 pools, taken from Meteora's data API. The first seven answered in the hosted app when this
+list was written (`GET /api/v1/pools/<address>/yield?days=30`); the last three exist but have not
+completed a day of fee history yet, so the app answers **422** on purpose instead of printing a zero.
 
-## The program
+| Pool address | Pair | TVL | Prices today |
+|---|---|---|---|
+| `BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1` | MET-USDC | $3.45M | yes — $84k fair value |
+| `8Pm2kZpnxD3hoMmt4bjStX2Pw2Z9abpbHzZxMPqxPmie` | SOL-USDC | $1.61M | yes — $7.4k |
+| `9B8xXGabWeEfCLzwHAwwbjZjQamiFsh7WC8Y5bkvPbqP` | RIV-SOL | $414k | yes — $17k |
+| `BJsSymifLkwUq8r3KMSiFH6t5JbLLBd1VJDgzD7qYNxF` | BELIEVE-SOL | $165k | yes — $100k |
+| `4xp7kN4nVt19caq4kM629vL8vJEqpSFVdZAh27wvYPh8` | BORDR-SOL | $153k | yes — $539k |
+| `EkPyMqfSQJMQcnQ3cCwxg3Xszj5crzSFTC8g2HvGhXk8` | BORDR-JupUSD | $107k | yes — $118k |
+| `F3XBLXejAn8YBS3qQao4u4fiijH4eaiHw7F68ovLz5Fq` | PLAY-USDC | $48k | yes — $298k |
+| `ARzhzEU1etsAArT1iX9t5zxNwYQMRhaYrvGuqxUMHCjH` | —USDC | $123k | not yet (422) |
+| `8FoQfA6pYc7Mgbab3ijTtWhq692p85enWRSTV6y6VVJW` | JPAD-USDC | $74k | not yet (422) |
+| `GrTParBtzTwXP2yPa16hSySTyvcskPs5wHm2f9S7jjWt` | WOSE-SOL | $16k | not yet (422) |
 
-`programs/perpetua_vault` — Anchor 0.32. `declare_id!` is the single source of truth; the IDL, the
-SDK constants, `Anchor.toml` and the LiteSVM harness all derive from it.
+The same addresses work in `/vault/[id]` and as a quote-token source on `/launch`, since every page
+prices through the same API.
 
-```
-G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2
-```
+Two of them show what **Risk flags** looks like when there is something to say, which is how you can
+tell the strip is reading the pool rather than always shrugging:
 
-### Accounts
+| Pool | Why it is flagged |
+|---|---|
+| `F3XBLXejAn8YBS3qQao4u4fiijH4eaiHw7F68ovLz5Fq` (PLAY-USDC) | one day of fee history and $48k of liquidity → `pool_too_young`, `low_liquidity` |
+| `7r8BCeWs7sPXJG6PywAAo47xXnNaF8Cid98ZmKRWRU1Q` | three days of history and $16k of liquidity → the same two |
 
-| Account | Seeds | Holds |
-|---|---|---|
-| `Config` | `["config"]` | `admin`, `treasury`, `protocol_fee_bps` (default `0`), `paused_entry`, `bump` |
-| `Vault` | `["vault", position]` | `pool`, `position`, the NFT refs, `share_mint`, `acc_fee_per_share_a/b`, `carry_a/b`, `total_staked`, `total_claimed_a/b`, `risk_flags`, `created_at`, `bump` |
-| `Stake` | `["stake", vault, owner]` | `amount`, `debt_a/b` (accumulator snapshots), `pending_a/b`, `bump` |
+The flags are computed from the pool's own history and liquidity — the older, deeper pools above
+genuinely have nothing to flag, so the strip stays quiet for them on purpose.
 
-Accounts are keyed by the **position** address, so one position maps to exactly one vault.
+### Wallets
 
-### Instructions
+`Create shares` signs with the wallet you connect, so a wallet is something you hold a key for — not an
+address you paste. The devnet wallet this project securitized with is
+`8iY6CPnv5TPLkdykzPxWB9Sm9Z4dsNfUAzXL3mSMMHa4`: it signed every `create_vault` above and still owns
+the locked positions behind those vaults. Its keypair is `keys/perpetua_vault-devnet.json`, which
+`.gitignore` keeps out of the repo — it is a devnet key with nothing behind it, and it is the fastest
+way to walk the whole flow yourself.
 
-| Instruction | Caller | Effect |
-|---|---|---|
-| `init_config(protocol_fee_bps)` | admin, once | creates `Config`; `treasury` is set to `admin` |
-| `create_vault()` | position owner | verifies the lock, takes the NFT account, mints 1,000,000 share tokens, revokes the mint authority, screens the fee mints' Token-2022 extensions |
-| `crank_claim()` | anyone | CPIs `claim_position_fee`, credits the accumulator, skims the protocol fee |
-| `stake(amount)` | holder | claims **first**, then adds stake |
-| `unstake(amount)` | holder | claims **first**, then removes stake |
-| `unstake_no_claim(amount)` | holder | removes stake without the claim CPI, for blocked or paused fee mints |
-| `harvest()` | holder | pays out `pending_a/b` |
-| `set_paused(paused)` | admin | gates **entry only** |
-| `set_risk_flags(flags)` | admin | re-settles the risk bitmask as the pool ages |
+The vault accounts above are real on-chain records, but be aware of where the app reads them from: the
+Vault page goes through the hosted API's index, which is an in-memory store with no indexer feeding it,
+so `/vault/<address>` answers "We couldn't find that vault" until an indexer is wired up. Reading a
+vault straight from the chain is what those Solscan links are for. The wallet scan on **Create shares**
+does read the chain, so pasting the devnet wallet above finds its locked position.
 
-> `instructions/touch.rs` is **not** an instruction despite the name — it holds the shared claim path
-> (`touch`, `settle`, `ClaimAccounts`) that `crank_claim` and `harvest` both call.
-
-### How fees are accounted
-
-```
-  crank_claim()
-       │
-       │ 1. read vault_a_account.amount          (before)
-       │ 2. CPI cp-amm claim_position_fee        (vault PDA signs)
-       │ 3. reload, read vault_a_account.amount  (after)
-       │ 4. delta = after - before
-       ▼
-   ┌───────┐
-   │ delta │
-   └───┬───┘
-       │
-       ├──► apply_protocol_fee(delta, bps) ──► fee ──► treasury
-       │
-       └──► net ──► accrue(vault, net)
-                      │
-                      ├─ total_staked == 0 ──► carry += net            (banked)
-                      │
-                      └─ otherwise ──► acc_fee_per_share += net·1e18 / total_staked
-                                            │
-                                            ▼
-              pending(stake) = stake.amount · acc / 1e18 − stake.debt + stake.pending
-                                            │
-                                     harvest() pays it out
-```
-
-Reading the balances around the CPI rather than trusting the claimed amount is what keeps accounting
-exact when the fee mint is Token-2022 with a transfer fee. Fees claimed while nobody is staked land in
-`carry_a/b` and are released to the next stakers.
-
-### Design rules
-
-- The program **never** removes liquidity, closes a position or changes a lock. The principal is
-  unreachable by construction.
-- `create_vault` only accepts positions with zero unlocked and zero vested liquidity and a positive
-  permanent lock. Split a mixed position with DAMM v2 `split_position` first.
-- **Claim-on-touch**: `stake` and `unstake` claim before touching accounting, which kills the
-  JIT-staking sandwich. `unstake_no_claim` covers the case where a fee mint blocks claims.
-- **Entry is pausable, exit never is.**
-
-```bash
-anchor build
-pnpm program:keypair                          # install the committed devnet keypair
-pnpm program:check                            # Anchor.toml vs declare_id!
-anchor deploy --provider.cluster devnet
-```
-
-The full deploy walkthrough, the SOL arithmetic and the traps that cost real time:
-[docs/DEVNET.md](docs/DEVNET.md).
 
 
 ## API reference
 
-`apps/api` is a Hono app over a `Store` port with two implementations: `InMemoryStore` (the default)
-and `DrizzleStore` (Postgres). Base URL `http://localhost:8787`.
+Every route is zod-validated; a bad value returns **400** with the issue list.
+
+### MCP
+
+`POST /mcp` — `https://perpetua-meteora.netlify.app/api/mcp` on the hosted deploy — is a Model
+Context Protocol endpoint on the same origin as everything else, so an assistant needs nothing
+installed but the address. It runs stateless Streamable HTTP and answers JSON: there is no session to
+keep, and a `GET` that does not ask for an event stream is refused. The bundled `@perpetua/mcp`
+package speaks the same tools over stdio for local use.
+
+**Nineteen tools, which is everything this site can do.** Reading: `where_is_address` (which cluster
+owns an address and what it is), `list_clusters`, `price_position`, `get_report`, `get_pool_series`,
+`find_positions` (a wallet's locked positions, with the securitization verdict), `list_vaults`,
+`simulate_preset`, `get_sale_plan`, `list_sale_presets`. Building, all unsigned and all returned as
+base64 for the caller's wallet to sign: `build_create_mint_tx`, `build_launch_tx`,
+`build_securitize_tx`, `build_stake_tx`, `build_unstake_tx`, `build_harvest_tx`, `build_crank_tx`,
+`build_open_sale_tx`, `build_seed_ladder_tx`. Each takes an optional `cluster`, so an assistant can
+price a mainnet pool and then build a devnet transaction, or launch on either network, without ever
+being handed a key.
 
 ### Read routes
 
 | Route | Query | Returns |
 |---|---|---|
 | `GET /health` | | `{ ok: true }` |
-| `GET /v1/stats` | | vaults, positions securitized, fees distributed, unique stakers, DLMM volume |
-| `GET /v1/vaults` | | every indexed vault |
-| `GET /v1/vaults/:id` | | one vault, or 404 |
-| `GET /v1/vaults/:id/events` | `limit` 1–500, default 50 | decoded Anchor events for that vault |
+| `GET /v1/stats` | | vaults, positions securitized, fees distributed, holders, volume |
+| `GET /v1/vaults` · `/v1/vaults/:id` | | every indexed vault, or one (404 if unknown) |
+| `GET /v1/vaults/:id/events` | `limit` 1–500 | decoded Anchor events |
 | `GET /v1/positions/:wallet` | | securitizable positions |
-| `GET /v1/positions/:wallet/onchain` | | position detail read from DAMM v2, plus `eligibility` |
+| `GET /v1/positions/:wallet/onchain` | | position detail read from DAMM v2 + `eligibility` |
 | `GET /v1/valuation/:position` | `pool`, `liquidityShare`, `protocolFeeBps`, `discountRate`, `horizonDays`, `days` | valuation for a position |
 | `GET /v1/pools/:pool/yield` | as above | valuation for a whole pool |
 | `GET /v1/pools/:pool/series` | `days` 7–30 | the raw daily fee series |
 | `GET /v1/sale/plan` | `fairValuePerShareUsd`, `totalShares`, `saleFraction`, `lowerPct`, `upperPct`, `binStep`, `binCount` | the DLMM ask ladder |
-| `GET /v1/dbc/preset` | `creatorTradingFeePct`, `creatorLiquidityPct`, `partnerLiquidityPct`, `lockedPct` | the preset and its validation |
+| `GET /v1/sale/presets` | | DLMM presets (bin step + base factor) on this cluster |
+| `GET /v1/dbc/preset` | `creatorTradingFeePct`, `creatorLiquidityPct`, `partnerLiquidityPct`, `lockedPct` | the financeable preset and its validation |
 | `GET /v1/stream` | | Server-Sent Events feed of vault events |
 
 ### Transaction routes
 
-Each returns `{ transaction: <base64> }` for the caller's wallet to sign, and 503 when the API has no
-RPC connection. **The API never holds a key.**
+Each returns an **unsigned** transaction for the caller's wallet to sign, and **503** when the API has
+no RPC connection. The API never holds a key.
 
 | Route | Body |
 |---|---|
 | `POST /v1/tx/create-vault` | `creator`, `pool`, `position`, `positionNftMint`, `positionNftAccount`, `positionNftProgram`, `tokenAMint`, `tokenBMint`, `tokenAProgram`, `tokenBProgram`, `shareMint` |
-| `POST /v1/tx/crank-claim` | `owner`, `vault` |
-| `POST /v1/tx/stake` | `owner`, `vault`, `amount` (base units, decimal string) |
-| `POST /v1/tx/unstake` | `owner`, `vault`, `amount` |
-| `POST /v1/tx/harvest` | `owner`, `vault` |
+| `POST /v1/tx/stake` · `/v1/tx/unstake` | `owner`, `vault`, `amount` (base units, decimal string) |
+| `POST /v1/tx/harvest` · `/v1/tx/crank-claim` | `owner`, `vault` |
+| `POST /v1/tx/create-mint` | `payer`, `mint`, `decimals` |
+| `POST /v1/tx/launch` | `creator`, `config`, `baseMint`, `quoteMint`, `feeClaimer`, `leftoverReceiver`, `name`, `symbol`, `uri`, `totalTokenSupply`, `creatorTradingFeePercentage`, `creatorLiquidityPercentage`, `partnerLiquidityPercentage`, `creatorPermanentLockedLiquidityPercentage`, `partnerPermanentLockedLiquidityPercentage` |
+| `POST /v1/tx/open-sale` | `owner`, `shareMint`, `quoteMint`, `presetParameter`, `binStep`, `baseFactor`, `initialPrice` |
+| `POST /v1/tx/seed-ladder` | `owner`, `poolAddress`, `shareMint`, `quoteMint`, `positionPubKey`, `binStep`, `plan` |
 
 ```bash
 POOL=<damm-v2-pool-address>
-curl -s "localhost:8787/v1/pools/$POOL/yield" | jq .valuation.fairValueUsd
+curl -s "localhost:8787/v1/pools/$POOL/yield" | jq .valuation.fairValuePerShareUsd
 curl -s "localhost:8787/v1/sale/plan?fairValuePerShareUsd=1" | jq .plan.weightedAveragePriceUsd
-
-curl -s -X POST localhost:8787/v1/tx/stake \
-  -H 'content-type: application/json' \
-  -d '{"owner":"<wallet>","vault":"<vault>","amount":"1000000"}' | jq -r .transaction | head -c 40
 ```
 
-Every query parameter and body is validated with zod; a bad value returns **400** with the issue list.
+## Try it, step by step
+
+### No wallet needed — start here
+
+1. Open **<https://perpetua-meteora.netlify.app/terminal>**.
+2. Paste a mainnet pool: `BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1` (MET-USDC). You get fair value, a
+   bear/base/bull range, implied APR, the scenario table, the trailing fee chart and the ask ladder.
+   The link under the address opens Solscan on **mainnet**.
+3. Paste `F3XBLXejAn8YBS3qQao4u4fiijH4eaiHw7F68ovLz5Fq` (PLAY-USDC) and the **Risk flags** strip lights
+   up with `pool too young` and `low liquidity`.
+4. Paste `8FoQfA6pYc7Mgbab3ijTtWhq692p85enWRSTV6y6VVJW` (JPAD-USDC) — a pool with no complete day yet —
+   and it says so instead of pretending the address is wrong.
+5. Paste `BBKD4ymn5JRzugqF4whh4UWXsvfQWbF2H1rdpBhfFUuC` (a **devnet** pool) and it tells you fee
+   history is only indexed on mainnet, with a devnet Solscan link.
+
+### On devnet — the whole lifecycle works
+
+6. Switch your wallet to devnet. Phantom: **Settings → Developer Settings → Change Network → Devnet**.
+   Solflare: **Settings → Network**. You need a little devnet SOL — <https://faucet.solana.com> gives
+   it away, and it is free.
+7. Go to **Create shares**. Paste `8iY6CPnv5TPLkdykzPxWB9Sm9Z4dsNfUAzXL3mSMMHa4` in the "or paste a
+   wallet address" box (or connect that wallet). The page scans the chain, shows the permanently
+   locked position, its unlocked / vested / permanent-lock figures, an eligibility verdict, and the
+   valuation of the pool behind it.
+8. Connect a devnet wallet that owns a locked DAMM v2 position and press **Create shares**, then sign.
+   You get a vault and 1,000,000 shares, with the share mint and the transaction as Solscan links.
+9. Open the vault: `https://perpetua-meteora.netlify.app/vault/DA2TEH6F8tRdfMMc9gj3cyMcKv5A9EezBwJpGk1ndbvu`
+   — that is a vault created by this repo's own end-to-end run. On it you can **stake**, **unstake**,
+   **harvest fees** and **crank claim**, and the same page holds **Sell shares** to open a market and
+   post an ask ladder.
+10. Watch the activity feed on that page — every action you take appears with its own Solscan link.
+
+### On mainnet — launching works; shares wait for the program
+
+11. Keep your wallet on mainnet and open **Launch plan**. Choose **Mainnet**, fill in name, ticker,
+    description and an image link, then **Create the token** and **Deploy the launch**, signing both.
+    That mints your token and opens its bonding-curve pool on mainnet — no metadata file to host,
+    because the metadata link is built and served by this app.
+12. The app tells you the one thing mainnet cannot do yet: **Create shares, stake, harvest, crank and
+    sell shares need the vault program, which is deployed on devnet only.** The Create shares page
+    spells this out for a mainnet wallet, disables the button, and points you at what does work.
+
+### With an AI assistant
+
+13. Open **Use with AI** (`/mcp`) and paste `https://perpetua-meteora.netlify.app/api/mcp` into Claude,
+    Cursor, VS Code or anything else that speaks MCP. Nineteen tools are available — the ten reading
+    ones and the nine transaction builders — each taking an optional `cluster`, so an assistant can
+    price a mainnet pool and then build a devnet transaction without ever being handed a key.
+
 
 ## The valuation model
 
-`@perpetua/valuation` is pure TypeScript with zero chain dependencies, and it is deliberately a
-**range, never a promise**.
+`@perpetua/valuation` is pure TypeScript with no chain dependency. Given a trailing daily fee series:
 
-```
-  trailing daily fees (7–30 days)
-          │
-          ▼
-   estimateDecay ── weighted log-linear fit of ln(fee_t) = a + b·t,  λ = −b
-          │
-          ▼
-   blendDecay(fitted λ, cohortPriorFor(poolAgeDays))     ← shrinkage toward a prior
-          │
-          ▼
-   projectFees ── F_t = max(f_last · e^(−λt), floor),  floor = 2% · f_last
-          │
-          ▼
-   presentValue ── PV = Σ share · F_t · (1 − protocolFee) / (1 + r)^(t/365)
-          │
-          ├──► bear / base / bull   (λ ×1.5 / 1.0 / 0.6, volume ×0.7 / 1.0 / 1.25)
-          ├──► fair value per share = PV / 1,000,000
-          ├──► payback days and implied APR at any offer price
-          └──► risk flags
-```
+1. **Fit a decay rate.** Weighted least squares on `ln(fee_t) = a + b·t`, so `λ = −b`, clamped to
+   `[−0.02, 0.15]` per day so a noisy series cannot project an absurd number. Zero and near-zero days
+   are floored at half the smallest positive fee before the log.
+2. **Shrink toward a prior.** `blendDecay(fitted, cohortPriorFor(poolAgeDays))` pulls the estimate
+   toward a prior that is harsher for young pools, where the early fee spike is hype rather than
+   earnings. The prior bites hardest exactly where the data is thinnest.
+3. **Project forward.** `F_t = lastFee · e^(−λt)`, floored.
+4. **Discount it.** `PV = Σ_t share · F_t · (1 − protocolFeeBps/10000) / (1 + r)^(t/365)`.
 
-λ is clamped to `[−0.02, 0.15]` per day so a noisy series cannot produce an absurd projection.
+Outputs: fair value, a bear/base/bull range, fair value **per share**, implied APR at fair value,
+payback days per scenario, and risk flags (`pausable_mint`, `permanent_delegate`, `pool_too_young`,
+`volume_concentration`, `low_liquidity`, `compounding_mode`).
 
-### Cohort prior
+**Calibration.** `pnpm --filter @perpetua/valuation backtest` runs the model on synthetic pools with a
+known decay rate: **mean absolute error ≈ 21.7%**, calibration (mean predicted / mean realized) ≈
+**1.15**. Real series carry regime changes the synthetic set does not model, so treat that as an upper
+bound on accuracy.
 
-Young pools decay faster, because the early fee spike is hype rather than earnings:
+## The on-chain program
 
-| Pool age | Prior λ/day | Blend weight |
-|---|---|---|
-| ≤ 7 days | 0.09 | 0.60 |
-| ≤ 30 days | 0.06 | 0.40 |
-| ≤ 90 days | 0.035 | 0.25 |
-| older | 0.02 | 0.15 |
+`programs/perpetua_vault`, Anchor 0.32, nine instructions:
 
-`blendDecay(fitted, prior) = fitted·(1 − w) + prior.λ·w` — the prior pulls hardest exactly where the
-data is thinnest, which is the same idea as shrinkage in a hierarchical model.
+`init_config` · `create_vault` · `crank_claim` · `stake` · `unstake` · `unstake_no_claim` · `harvest` ·
+`set_paused` · `set_risk_flags`
 
-### Risk flags
+Deployed on devnet at `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2`.
 
-| Flag | Trigger |
-|---|---|
-| `compounding_mode` | the pool reinvests part of the fee, so it cannot be distributed |
-| `pausable_mint` | the fee mint carries a `DefaultAccountState` extension |
-| `permanent_delegate` | the fee mint carries a `PermanentDelegate` extension |
-| `pool_too_young` | fewer than seven days of history |
-| `volume_concentration` | one wallet drove more than half of volume |
-| `low_liquidity` | pool liquidity below $50k |
+**Fee accounting.** Each claim CPIs `claim_position_fee`, then credits the **balance diff** of the
+vault's token A/B accounts — which handles Token-2022 transfer fees automatically. The protocol skim is
+applied, and the net is added to a `u128` fee-per-share accumulator scaled by `1e18`. A staker's
+`pending` is `stake.amount · (acc − debt) / 1e18`. Fees that arrive while nobody is staked are banked as
+**carry** and released to the next stakers.
 
-Flags do not change the price. They are surfaced next to it and used to filter the Vaults table.
-
-### Sessions, compounding, reproducibility
-
-- `session.ts` classifies any instant into `pre` (04:00–09:30), `regular` (09:30–16:00), `post`
-  (16:00–20:00) or `overnight` (20:00–04:00) Eastern Time, handles the Friday 20:00 → Sunday 20:00
-  dead zone, splits a fee series per session, and measures how long the reference is dark.
-- `compounding.ts` separates `claimablePvUsd` — the withdrawable **floor** — from
-  `growthAdjustedPvUsd`, the **upside**, which counts reinvested fees that drift the position's share
-  of the pool upward.
-- `version.ts` pins `modelVersion` and a 64-bit FNV-1a `inputsHash` over the canonical (key-sorted)
-  JSON of the inputs onto every result, so any published number is reproducible.
-
-### Calibration
-
-`pnpm --filter @perpetua/valuation backtest` regenerates
-[`packages/valuation/backtest/results.md`](packages/valuation/backtest/results.md) from synthetic pools
-whose decay rate is known:
-
-| Metric | Value |
-|---|---|
-| Mean absolute error, 30 days ahead | **21.7%** |
-| Calibration (mean predicted ÷ mean realized) | **1.150** |
-
-Calibration near 1.0 means the model is unbiased on average. Real series carry regime changes the
-synthetic set does not model, so treat these numbers as an upper bound.
-
-## Status
-
-Every claim below was verified by running it, not by reading the source. The on-chain flow was run
-against **live devnet**, not just the local harness — see [Verified on devnet](#verified-on-devnet).
-
-| Area | State |
-|---|---|
-| `programs/perpetua_vault` | **deployed on devnet** — `G7ixan3xxy2SRR84Qnv7pUAh1wSinYdhzKwJyhFfqWH2`, ProgramData `3TZquUCXK8AgLHVkAtTFVu3jx6qCJu8NY7umV6FKg7RG`, 448,248 bytes, deployed in slot 507749514 |
-| Bytecode identity | `solana program dump` hashes **byte-for-byte** to `target/deploy/perpetua_vault.so` (`sha256 30796ad88425eec7…b7aca6a472`) — what is live is what was tested |
-| Position-lock offsets | verified against **11 live on-chain DAMM v2 positions**, one of them permanently locked |
-| Rust | `cargo test --workspace` → **26 pass**; `cargo clippy --workspace --all-targets -- -D warnings` clean |
-| TypeScript | **154 tests** across 8 packages; `biome check` clean; `tsc` clean; `next build` green |
-| `@perpetua/web` | 6 pages, plus `loading.tsx`, `error.tsx`, `not-found.tsx` and `global-error.tsx` boundaries |
-| Meteora SDKs | `@meteora-ag/cp-amm-sdk`, `@meteora-ag/dlmm` and `-dynamic-bonding-curve-sdk` are wired through real adapters, not stubs |
-| LiteSVM suite | `tests/litesvm`; loads the compiled artifact when `cargo build-sbf` is available and skips cleanly otherwise |
-
-### Test counts
-
-| Suite | Tests |
-|---|---|
-| `@perpetua/valuation` | 46 |
-| `@perpetua/shared` | 13 |
-| `@perpetua/mcp` | 30 |
-| `@perpetua/sdk` | 35 |
-| `@perpetua/api` | 12 |
-| `@perpetua/stock-kit` | 9 |
-| `@perpetua/indexer` | 4 |
-| `@perpetua/keeper` | 5 |
-| **TypeScript total** | **154** (turbo: 12 tasks) |
-| `perpetua_vault` — Rust unit tests | 17 |
-| `perpetua_vault_litesvm` — boot + flow | 9 |
-| **Rust total** | **26** |
-
-### Verified on devnet
-
-`pnpm --filter @perpetua/sdk ops:devnet-e2e` runs the whole flow against the deployed program and
-finishes with `devnet end-to-end complete`:
-
-```
-init_config            -> Config h7oJ4q2qkaPt92YiFfYDuHRzvMj1UVeXPh1J3TyRQu3 (76 bytes)
-createCustomPool       -> a real DAMM v2 pool plus a permanently locked position
-                          (permanent=18446744078004599633000037588, unlocked=0, vested=0)
-create_vault           -> share mint minted 1,000,000.000000 shares, authority revoked
-swap                   -> real trading fees accrue on the position
-crank_claim            -> fees claimed by balance diff; unstaked, so they bank as carry
-stake                  -> 1,000,000,000,000 base units staked
-crank_claim            -> fees credited to the staker (total_claimed_b = 308,263)
-harvest                -> staker paid out
-```
-
-`pnpm --filter @perpetua/sdk ops:probe` prints the deployment's live state without trusting anything
-in this repository — program, Config, and every Vault/Stake account decoded from raw bytes:
-
-```
-program: 36 bytes, executable=true, owner=BPFLoaderUpgradeab1e...
-config account: 76 bytes
-all program accounts by size:
-  1 x 76 bytes   Config
-  2 x 129 bytes  Stake
-  7 x 413 bytes  Vault
-```
-
-Running it on a real cluster found eight defects that the local harness could not, all now fixed:
-the e2e never called `init_config` and never confirmed its transactions; `create_vault` declared an
-unused `rent` sysvar the SDK never passed; the position NFT account was derived as an associated
-token account instead of a cp-amm PDA; nothing created the vault's or treasury's fee token accounts;
-Anchor was being handed object-form arguments instead of positional ones; the vault's share token
-account was never created; and `harvest` omitted two required mint accounts.
-
-```bash
-pnpm --filter @perpetua/sdk ops:extract-idls      # dump the Meteora IDLs we build against
-pnpm --filter @perpetua/sdk ops:verify-offsets    # check our byte offsets against live positions
-pnpm ops:faucet -- --dry-run                      # how much devnet SOL the deploy still needs
-KEYPAIR=~/.config/solana/devnet.json pnpm --filter @perpetua/sdk ops:devnet-e2e
-```
-
-## MCP server
-
-`@perpetua/mcp` exposes Perpetua to other AI agents over the
-[Model Context Protocol](https://modelcontextprotocol.io), so an LLM can price positions, read fee
-report cards and build unsigned transactions without bespoke glue.
-
-| Tool | What it does |
-|---|---|
-| `price_position` | Fair-value a permanently locked position, or a whole pool, as a decaying fee stream |
-| `list_vaults` | List the indexed Perpetua vaults |
-| `get_report` | Fee Report Card: valuation plus pooled fee/volume statistics |
-| `simulate_preset` | Build, validate and price a DBC financeable preset |
-| `build_securitize_tx` | Build the **unsigned** `create_vault` transaction |
-
-```bash
-pnpm build
-PERPETUA_API_URL=http://localhost:8787 pnpm mcp
-```
-
-It holds no keys: `build_securitize_tx` returns a base64 wire transaction tagged `"unsigned": true`
-plus the address that must sign it. Full setup, including the client JSON for Claude Desktop, Cursor
-and VS Code, is in [packages/mcp/README.md](packages/mcp/README.md).
-
-## Commands
-
-Run from the repo root unless noted.
-
-| Command | What it does |
-|---|---|
-| `pnpm install` | install the workspace |
-| `pnpm build` | turbo: build every package and app |
-| `pnpm test` | turbo: run all TypeScript tests |
-| `pnpm typecheck` | turbo: `tsc --noEmit` everywhere |
-| `pnpm lint` / `pnpm format` | `biome check .` / `biome format --write .` |
-| `pnpm dev` | watch mode: web, api, indexer, keeper |
-| `pnpm --filter @perpetua/api dev` | API only, on `:8787` |
-| `pnpm --filter @perpetua/web dev` | web only, on `:3000` |
-| `pnpm idl` | regenerate the program IDL from the built artifact |
-| `pnpm program:check` | fail if `Anchor.toml` drifted from `declare_id!` |
-| `pnpm program:sync` | rewrite the `Anchor.toml` program ids from `declare_id!` |
-| `pnpm program:keypair` | install `keys/perpetua_vault-devnet.json` into `target/deploy/` |
-| `pnpm ops:faucet` | request devnet SOL for the payer (`--dry-run`, `--attempts`, `--interval`) |
-| `pnpm mcp` | start the MCP server over stdio |
-| `pnpm --filter @perpetua/sdk ops:extract-idls` | dump the Meteora IDLs the repo builds against |
-| `pnpm --filter @perpetua/sdk ops:verify-offsets` | check position byte offsets against live accounts |
-| `pnpm --filter @perpetua/sdk ops:create-vault` | build and send `create_vault` from a local keypair |
-| `pnpm --filter @perpetua/sdk ops:devnet-e2e` | run the whole flow end to end on devnet |
-| `pnpm --filter @perpetua/sdk ops:probe` | read the deployment's live state back off the chain |
-| `pnpm --filter @perpetua/valuation backtest` | regenerate the calibration report |
+**Claim-on-touch.** `stake`, `unstake` and `harvest` all call `touch()` — the claim — *before* they
+mutate accounting, so a newcomer cannot join at the instant fees land. `unstake_no_claim` exists so a
+paused or blocked fee mint can never trap a holder.
 
 ## Testing
 
 ```bash
-pnpm test                                        # 154 TypeScript tests
+pnpm test                                        # 157 TypeScript tests
 pnpm lint && pnpm typecheck                      # biome + tsc
-cargo test --workspace                           # 26 Rust tests
+cargo test --workspace                           # the Rust suites
 cargo clippy --workspace --all-targets -- -D warnings
 pnpm program:check                               # Anchor.toml vs declare_id!
 ```
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs a TypeScript job
-(`pnpm install --frozen-lockfile`, lint, build, test) and a Rust job (`cargo test` in
-`programs/perpetua_vault`, then an Anchor build and a `solana-verify` build) on every push and pull
-request.
+The TypeScript suites cover the pricing model, the ladder and bin maths, the SDK adapters (against a
+mocked HTTP layer), the API routes and stores, the indexer mapping and the keeper decision logic. The
+Rust suites cover fee-per-share accrual, carry banking, fee conservation, the protocol-fee split, the
+Token-2022 extension parser, and an end-to-end LiteSVM flow (`init_config → create_vault → crank_claim
+→ harvest`) against a mock DAMM v2.
+
+> Tests sit next to the code they cover (`**/test/`, `**/*.test.ts`). They are kept out of version
+> control by `.gitignore`, so a clone ships the app without them.
+
+## Deployment
+
+The web app deploys to Netlify; the API is a **Netlify Function** at `/api/*`, so the UI calls it
+same-origin — no CORS, no second host.
+
+```bash
+netlify login
+netlify deploy --build --prod
+```
+
+`netlify.toml` builds the monorepo (`pnpm install --frozen-lockfile && pnpm build`), publishes
+`apps/web/.next` through `@netlify/plugin-nextjs`, and sets `NEXT_PUBLIC_API_URL=/api` for the web
+build. It then runs `pnpm build:fn`, which bundles `netlify/api/handler.ts` — the API and every
+dependency it pulls in — into `netlify/api/api.bundle.cjs`. The function at
+`netlify/functions/api.ts` re-exports that bundle, and `netlify.toml` rewrites `/api/*` onto it.
+
+The API is prebundled because Netlify's own bundler cannot ship it as-is. Its native modules plugin
+marks every package with a native binding as external and then leaves those packages out of the
+function archive, so the function dies at load with `Cannot find module 'bigint-buffer'` —
+`@solana/buffer-layout-utils` requires it eagerly. The prebundled file inlines everything, which
+leaves Node builtins as its only `require()` calls. The handler is also **Functions v1** on purpose:
+v2 forces Node File Trace, which cannot follow the bare `@perpetua/*` specifiers that the compiled
+packages emit, because pnpm does not link workspace packages into the root `node_modules`.
+
+The API picks its cluster from `CLUSTER` (default `devnet`); set it in the Netlify UI to point the
+hosted API at mainnet. The hosted API uses an in-memory store, so the Vaults list is empty until an
+indexer feeds it.
 
 ## Security model
 
-The vault takes custody of a **position NFT account, not of funds**. After `create_vault` the vault
-PDA owns the NFT account and the fee stream can only be claimed and split by the program. There is
-**no instruction that removes liquidity, closes the position or changes a lock** — the principal is
+The vault takes custody of a **position NFT account, not of funds.** After `create_vault` the vault PDA
+owns the NFT account, and the fee stream can only be claimed and split by the program. There is **no
+instruction that removes liquidity, closes the position or changes a lock** — the principal is
 unreachable by construction.
 
 | Threat | Mitigation |
 |---|---|
 | Admin drains the vault | The admin can only set `protocol_fee_bps` at init and re-settle `risk_flags`. There is no path to the NFT. |
-| Admin traps holders | `set_paused` gates **entry only** (`create_vault`, `stake`). Exits — `unstake`, `unstake_no_claim`, `harvest`, `crank_claim` — are never gated. |
-| JIT-staking sandwich | `stake` and `unstake` claim **before** touching accounting, in the same transaction. |
-| Token-2022 transfer fees break accounting | Fees are credited by **balance diff** around the CPI, not by the claimed amount. |
-| A paused or blocked fee mint bricks stakers | `unstake_no_claim` exits without the claim CPI. |
-| Pool or position substitution | The vault is keyed by position (`["vault", position]`), `has_one = pool` pins the pool, and `share_mint` is pinned with `address =`. |
+| Admin traps holders | `set_paused` gates **entry only** (`create_vault`, `stake`). Every exit is never gated. |
+| JIT-staking sandwich | `stake`/`unstake` claim before touching accounting, in the same transaction. |
+| Token-2022 transfer fees break accounting | Fees are credited by balance diff around the CPI. |
+| A paused fee mint bricks stakers | `unstake_no_claim` exits without the claim CPI. |
+| Pool or position substitution | The vault is keyed by position; `has_one = pool` pins the pool; `share_mint` is pinned with `address =`. |
 | cp-amm program substitution | `CP_AMM_PROGRAM_ID` is asserted on every account struct that receives it. |
-| A `TransferHook` fee mint | `create_vault` walks the Token-2022 extension TLV and **refuses** the mint. |
-| Arithmetic overflow | All arithmetic is `checked_*`; accumulators are `u128` scaled by `1e18`. |
-| Rounding leakage | User claims floor; dust stays in the vault, bounded by the conservation invariant. |
-
-The full threat model, the seven tested invariants, the pause switch and risk-flag semantics, the
-incident runbook and the operational plan are in [docs/SECURITY.md](docs/SECURITY.md).
+| A `TransferHook` fee mint | `create_vault` walks the Token-2022 extension TLV and refuses the mint. |
 
 ## Known limitations
 
 Stated plainly, because a reviewer will find them anyway.
 
-- **The LiteSVM fee flow drives a mock DAMM v2.** `tests/litesvm/tests/flow.rs` runs
-  `init_config → create_vault → crank_claim → harvest` against the compiled program with the real SPL
-  token program and real PDA signing, but the cp-amm callee is `tests/mock-cp-amm`. The mock
-  reproduces the one behaviour the vault depends on — the fee delta arriving in the vault's token
-  accounts — and nothing else, so DAMM v2's own pool validation and fee arithmetic are out of scope
-  here. `scripts/fetch-programs.sh` dumps the real `cp_amm.so`; pointing the harness at it is a
-  one-line change in `tests/litesvm/src/lib.rs`.
-- **`init_config` wires `treasury` to `admin`.** There is no separate treasury argument, so the two
-  cannot be separated later without re-initialising `Config`. A multi-sig treasury wants a
-  `set_treasury` before this handles real value.
-- **The API has no authentication, rate limiting or webhooks.** Spec 8A calls for hashed API keys;
-  only the MCP server exists today. CORS defaults to the local web origin in development and to
-  same-origin in production (`CORS_ORIGINS` opts a deploy in).
+- **The program is unaudited.** Do not put more at risk than you can lose.
+- **The ladder's bin-id placement** is the one number to confirm on a devnet run against a live pair.
 - **Only fully permanently locked positions are accepted.** Split a mixed position with DAMM v2
   `split_position` first.
-- **The DLMM pair PDA seed for `createLbPair2`** should be confirmed on devnet, and the DBC migration
-  hand-off to `/securitize` still needs a devnet run — see
-  [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
-- **The program is unaudited.** Do not put more at risk than you can lose.
-
-## Troubleshooting
-
-| Symptom | Cause and fix |
-|---|---|
-| Web shows "indexer API unreachable" | The API is not running. `pnpm --filter @perpetua/api dev`. The browser reads `NEXT_PUBLIC_API_URL`, default `http://localhost:8787`. |
-| `pnpm install --frozen-lockfile` fails | The lockfile is out of sync with a `package.json`. Run `pnpm install --lockfile-only`. |
-| Deploy fails with `is not an upgradeable program or already in use` | The **program address** is occupied, usually because an airdrop went there. Drain it to zero and pay from a separate wallet — see [docs/DEVNET.md](docs/DEVNET.md). |
-| Faucet returns an `Internal error` code | A faucet-side fault that still consumes the credit. Use <https://faucet.solana.com>, which is a different backend. |
-| `anchor build` fails inside `cargo build-sbf` | The Solana platform tools are missing (~531 MB from GitHub releases). Build where GitHub is reachable, or in CI. |
-| LiteSVM tests skip | Expected when `target/deploy/perpetua_vault.so` is absent — the suite builds it when `cargo build-sbf` is available and skips cleanly otherwise. |
-| Offset or spec checks fail | The program id drifted. Run `pnpm program:check`, then `pnpm program:sync`. |
-
-## Documentation index
-
-| Document | Contents |
-|---|---|
-| [docs/DEVNET.md](docs/DEVNET.md) | the devnet path: building, funding, deploying, and the traps |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | the full flow and every component in detail |
-| [docs/VALUATION.md](docs/VALUATION.md) | the model, its formulas, the cohort prior, sessions, calibration |
-| [docs/SECURITY.md](docs/SECURITY.md) | threat model, invariants, pause switch, runbook, operational plan |
-| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | what is verified against the shipped Meteora IDLs, and what is left |
-| [docs/JUDGES.md](docs/JUDGES.md) | the 5-minute path |
-| [packages/mcp/README.md](packages/mcp/README.md) | the MCP server for other agents |
-| [docs/LEGAL_NOTE.md](docs/LEGAL_NOTE.md) | securities-law caveats |
-| [PERPETUA_BUILD_SPEC.md](PERPETUA_BUILD_SPEC.md) | the build spec this repository implements |
-| [keys/README.md](keys/README.md) | why the devnet program keypair is committed |
+- **The API has no authentication, rate limiting or webhooks.** CORS is same-origin in production.
+- **The indexer is not deployed**, so a hosted API shows no vaults until one is.
+- **`init_config` wires `treasury` to `admin`.** A real treasury wants a `set_treasury` first.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Unaudited hackathon software: not legal, tax or investment advice. See
-[docs/LEGAL_NOTE.md](docs/LEGAL_NOTE.md).
+MIT.
+
+
 

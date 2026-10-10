@@ -377,12 +377,415 @@ const buildSecuritizeTx = defineTool({
   },
 });
 
+/// Which cluster a transaction is built against. Devnet is where the vault program lives; mainnet is
+/// where Meteora's programs and real liquidity live. Both are wired into the API, and every route that
+/// touches the chain takes this.
+const clusterShape = {
+  cluster: z
+    .enum(["devnet", "mainnet-beta"])
+    .optional()
+    .describe("Cluster to build or read against. Defaults to mainnet-beta, the deploy's default."),
+};
+
+/// Every transaction tool answers the same way, so an agent learns the shape once: the base64 wire
+/// transaction, who has to sign it, anything else the route returned, and the reminder that Perpetua
+/// never holds a key. The cluster rides in the query because the body is validated field by field.
+function txTool<S extends z.ZodObject<z.ZodRawShape>>(spec: {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: S;
+  path: string;
+  body: (args: z.infer<S>) => Record<string, unknown>;
+  signer: (args: z.infer<S>) => string;
+}): AnyTool {
+  return defineTool({
+    name: spec.name,
+    title: spec.title,
+    description: spec.description,
+    inputSchema: spec.inputSchema,
+    async handler(args, port, ctx) {
+      const { cluster } = args as { cluster?: string };
+      const path = cluster ? `${spec.path}?cluster=${cluster}` : spec.path;
+      const payload = record(await port.post(path, spec.body(args)));
+      const transaction = payload.transaction;
+      if (typeof transaction !== "string" || transaction.length === 0) {
+        throw new Error("the api did not return an unsigned transaction");
+      }
+      const result = Object.fromEntries(
+        Object.entries(payload).filter(([key]) => key !== "transaction"),
+      );
+      return {
+        envelope: envelope(ctx, [path], null, true),
+        data: {
+          unsigned_transaction_base64: transaction,
+          requires_signature: true,
+          signer: spec.signer(args),
+          result,
+          note: "Sign this with the wallet named in `signer` and submit it. Perpetua never holds keys.",
+        },
+      };
+    },
+  });
+}
+
+/// Where an address lives, and what it is. Every other tool depends on this: a pool is priced on
+/// mainnet, a vault lives on devnet, and an agent that skips this step looks in the wrong place.
+const whereIsAddress = defineTool({
+  name: "where_is_address",
+  title: "Which cluster owns an address, and what kind of account it is",
+  description:
+    "Ask devnet and mainnet which of them owns an address, and whether it is a pool, wallet, mint, " +
+    "token account or vault. Call this first with any address an agent is handed.",
+  inputSchema: z.object({ address: PUBKEY.describe("Any Solana address.") }),
+  async handler(args, port, ctx) {
+    const path = `/v1/where/${args.address}`;
+    return { envelope: envelope(ctx, [path], null), data: (await port.get(path)) ?? null };
+  },
+});
+
+/// The clusters this deployment serves, and which one is the default.
+const listClusters = defineTool({
+  name: "list_clusters",
+  title: "List the clusters Perpetua serves",
+  description:
+    "The clusters this deployment can reach and the one it defaults to. Mainnet carries pool fee " +
+    "history; devnet carries the Perpetua vault program.",
+  inputSchema: z.object({}),
+  async handler(_args, port, ctx) {
+    const path = "/v1/clusters";
+    return { envelope: envelope(ctx, [path], null), data: (await port.get(path)) ?? null };
+  },
+});
+
+/// A wallet's positions straight from the DAMM v2 program, with the securitization verdict attached.
+const findPositions = defineTool({
+  name: "find_positions",
+  title: "A wallet's DAMM v2 positions, with a securitization verdict",
+  description:
+    "Read the positions a wallet owns from the DAMM v2 program: how much is unlocked, vested and " +
+    "permanently locked, plus whether each can be securitized as it stands. Feed an eligible one " +
+    "straight into build_securitize_tx.",
+  inputSchema: z.object({
+    wallet: PUBKEY.describe("Wallet to scan."),
+    ...clusterShape,
+  }),
+  async handler(args, port, ctx) {
+    const path = `/v1/positions/${args.wallet}/onchain${
+      args.cluster ? `?cluster=${args.cluster}` : ""
+    }`;
+    const payload = record(await port.get(path));
+    const positions = Array.isArray(payload.positions) ? payload.positions : [];
+    return {
+      envelope: envelope(ctx, [path], null),
+      data: {
+        wallet: args.wallet,
+        count: positions.length,
+        eligible: positions.filter((position) => record(position).eligibility).length,
+        positions,
+      },
+    };
+  },
+});
+
+/// The raw daily series behind every valuation, for an agent that wants the data, not the model.
+const getPoolSeries = defineTool({
+  name: "get_pool_series",
+  title: "The daily fee and volume series of a pool",
+  description:
+    "The raw trailing daily series a valuation is fitted to: fees, volume and liquidity per day. " +
+    "Use it when the question is about the data rather than the price.",
+  inputSchema: z.object({
+    pool: PUBKEY.describe("DAMM v2 pool address."),
+    days: z.number().int().min(7).max(30).optional().describe("Days of history, 7-30."),
+  }),
+  async handler(args, port, ctx) {
+    const path = API.poolSeries(args.pool);
+    const payload = record(await port.get(path, { days: args.days }));
+    const series = record(payload.series);
+    return {
+      envelope: envelope(ctx, [path], null),
+      data: { pool: args.pool, days: series.days ?? [], fees_usd: series.feesUsd ?? [] },
+    };
+  },
+});
+
+/// The DLMM presets a share market can be created at on a given cluster.
+const listSalePresets = defineTool({
+  name: "list_sale_presets",
+  title: "The DLMM bin-step presets a share market can use",
+  description:
+    "The bin-step presets available on a cluster, which decide how finely a share sale is priced. " +
+    "Pair with get_sale_plan to see the ladder a preset produces.",
+  inputSchema: z.object({ ...clusterShape }),
+  async handler(args, port, ctx) {
+    const path = `/v1/sale/presets${args.cluster ? `?cluster=${args.cluster}` : ""}`;
+    return { envelope: envelope(ctx, [path], null), data: (await port.get(path)) ?? null };
+  },
+});
+
+/// The ask ladder a sale would post, without creating anything.
+const getSalePlan = defineTool({
+  name: "get_sale_plan",
+  title: "The ask ladder a share sale would post",
+  description:
+    "Turn a fair value per share into the one-sided DLMM ladder a seller would post: the bins, their " +
+    "prices and how many shares land in each. Read-only; nothing is created.",
+  inputSchema: z.object({
+    fair_value_per_share_usd: z.number().gt(0).describe("Fair value of one share, in USD."),
+    total_shares: z
+      .number()
+      .int()
+      .gt(0)
+      .optional()
+      .describe("Shares offered. Defaults to 1,000,000."),
+    sale_fraction: z.number().gt(0).max(1).optional().describe("Fraction of idle shares to list."),
+    lower_pct: z
+      .number()
+      .gt(0)
+      .max(1)
+      .optional()
+      .describe("How far below fair value the ladder starts."),
+    upper_pct: z.number().gt(0).optional().describe("How far above fair value the ladder ends."),
+    bin_step: z.number().int().min(1).max(400).optional().describe("DLMM bin step in basis points."),
+    bin_count: z.number().int().min(1).max(1400).optional().describe("Number of bins to spread over."),
+  }),
+  async handler(args, port, ctx) {
+    const path = "/v1/sale/plan";
+    const payload = record(
+      await port.get(path, {
+        fairValuePerShareUsd: args.fair_value_per_share_usd,
+        totalShares: args.total_shares,
+        saleFraction: args.sale_fraction,
+        lowerPct: args.lower_pct,
+        upperPct: args.upper_pct,
+        binStep: args.bin_step,
+        binCount: args.bin_count,
+      }),
+    );
+    return { envelope: envelope(ctx, [path], null), data: payload.plan ?? null };
+  },
+});
+
+/// A plain SPL mint, the first half of a launch.
+const buildCreateMintTx = txTool({
+  name: "build_create_mint_tx",
+  title: "Build an unsigned mint transaction",
+  description:
+    "Build the unsigned transaction that creates the base token a launch needs. Nothing is signed " +
+    "and nothing is sent.",
+  inputSchema: z.object({
+    payer: PUBKEY.describe("Wallet that pays for and owns the mint."),
+    mint: PUBKEY.describe("The new mint's address. Generate a keypair and sign with it."),
+    decimals: z.number().int().min(0).max(9).describe("Mint decimals. Six is what launches use."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/create-mint",
+  body: (args) => ({ payer: args.payer, mint: args.mint, decimals: args.decimals }),
+  signer: (args) => args.payer,
+});
+
+/// The whole launch: the DBC config and its pool, in one transaction.
+const buildLaunchTx = txTool({
+  name: "build_launch_tx",
+  title: "Build an unsigned DBC launch transaction",
+  description:
+    "Build the unsigned transaction that creates a Dynamic Bonding Curve config and its pool with " +
+    "the liquidity split the caller chose. The metadata `uri` can point at Perpetua's own metadata " +
+    "endpoint (/v1/token/metadata?name=…&symbol=…&description=…&image=…), so a launch needs no " +
+    "hosted JSON file. Config and pool addresses come back in `result`.",
+  inputSchema: z.object({
+    creator: PUBKEY.describe("Wallet that pays, signs and receives the fees."),
+    config: PUBKEY.describe("The new config's address. Generate a keypair and sign with it."),
+    base_mint: PUBKEY.describe("The token created by build_create_mint_tx."),
+    quote_mint: PUBKEY.describe("Quote token, usually wrapped SOL or USDC."),
+    name: z.string().min(1).max(32).describe("Token name."),
+    symbol: z.string().min(1).max(10).describe("Ticker."),
+    uri: z.string().min(1).max(200).describe("Metadata link, at most 200 characters."),
+    total_token_supply: z.number().int().gt(0).describe("Total supply minted into the curve."),
+    creator_trading_fee_percentage: z.number().min(0).max(100).describe("Creator's cut of fees."),
+    creator_liquidity_percentage: z.number().min(0).max(100).describe("Creator's liquidity share."),
+    partner_liquidity_percentage: z.number().min(0).max(100).describe("Partner's liquidity share."),
+    creator_permanent_locked_liquidity_percentage: z
+      .number()
+      .min(0)
+      .max(100)
+      .describe("Locked forever — the part that can become shares later."),
+    partner_permanent_locked_liquidity_percentage: z.number().min(0).max(100),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/launch",
+  body: (args) => ({
+    creator: args.creator,
+    config: args.config,
+    baseMint: args.base_mint,
+    quoteMint: args.quote_mint,
+    feeClaimer: args.creator,
+    leftoverReceiver: args.creator,
+    name: args.name,
+    symbol: args.symbol,
+    uri: args.uri,
+    totalTokenSupply: args.total_token_supply,
+    creatorTradingFeePercentage: args.creator_trading_fee_percentage,
+    creatorLiquidityPercentage: args.creator_liquidity_percentage,
+    partnerLiquidityPercentage: args.partner_liquidity_percentage,
+    creatorPermanentLockedLiquidityPercentage: args.creator_permanent_locked_liquidity_percentage,
+    partnerPermanentLockedLiquidityPercentage: args.partner_permanent_locked_liquidity_percentage,
+  }),
+  signer: (args) => args.creator,
+});
+
+/// Stake and unstake: moving shares in and out of a vault.
+const buildStakeTx = txTool({
+  name: "build_stake_tx",
+  title: "Build an unsigned stake transaction",
+  description: "Build the unsigned transaction that stakes share tokens in a vault to earn fees.",
+  inputSchema: z.object({
+    owner: PUBKEY.describe("Share holder signing."),
+    vault: PUBKEY.describe("Perpetua vault address."),
+    amount: z.string().regex(/^\d+$/).describe("Share amount in base units, as a decimal string."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/stake",
+  body: (args) => ({ owner: args.owner, vault: args.vault, amount: args.amount }),
+  signer: (args) => args.owner,
+});
+
+const buildUnstakeTx = txTool({
+  name: "build_unstake_tx",
+  title: "Build an unsigned unstake transaction",
+  description: "Build the unsigned transaction that takes staked shares back out of a vault.",
+  inputSchema: z.object({
+    owner: PUBKEY.describe("Share holder signing."),
+    vault: PUBKEY.describe("Perpetua vault address."),
+    amount: z.string().regex(/^\d+$/).describe("Share amount in base units, as a decimal string."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/unstake",
+  body: (args) => ({ owner: args.owner, vault: args.vault, amount: args.amount }),
+  signer: (args) => args.owner,
+});
+
+/// Harvest pulls the pool's earned fees into the vault; crank claims them for stakeholders.
+const buildHarvestTx = txTool({
+  name: "build_harvest_tx",
+  title: "Build an unsigned harvest transaction",
+  description:
+    "Build the unsigned transaction that moves the fees the pool has earned into the vault, ready " +
+    "for holders to claim.",
+  inputSchema: z.object({
+    owner: PUBKEY.describe("Wallet signing; anyone may harvest."),
+    vault: PUBKEY.describe("Perpetua vault address."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/harvest",
+  body: (args) => ({ owner: args.owner, vault: args.vault }),
+  signer: (args) => args.owner,
+});
+
+const buildCrankTx = txTool({
+  name: "build_crank_tx",
+  title: "Build an unsigned crank-claim transaction",
+  description:
+    "Build the unsigned transaction that claims a vault's fees on behalf of stakeholders. " +
+    "Permissionless: any wallet can send it.",
+  inputSchema: z.object({
+    caller: PUBKEY.describe("Wallet signing; anyone may crank."),
+    vault: PUBKEY.describe("Perpetua vault address."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/crank-claim",
+  body: (args) => ({ owner: args.caller, vault: args.vault }),
+  signer: (args) => args.caller,
+});
+
+/// The market side: create the share pair, then post the ladder of asks.
+const buildOpenSaleTx = txTool({
+  name: "build_open_sale_tx",
+  title: "Build an unsigned create-market transaction",
+  description:
+    "Build the unsigned transaction that creates the DLMM pair a share sale trades in. If the pair " +
+    "already exists the API says so in `result` and returns no transaction.",
+  inputSchema: z.object({
+    owner: PUBKEY.describe("Wallet creating the market."),
+    share_mint: PUBKEY,
+    quote_mint: PUBKEY,
+    preset_parameter: PUBKEY.describe("Preset account from list_sale_presets."),
+    bin_step: z.number().int().min(1).max(400),
+    base_factor: z.string().regex(/^\d+$/).describe("Base factor, as a decimal string."),
+    initial_price: z.number().gt(0).describe("Starting price of one share, in the quote token."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/open-sale",
+  body: (args) => ({
+    owner: args.owner,
+    shareMint: args.share_mint,
+    quoteMint: args.quote_mint,
+    presetParameter: args.preset_parameter,
+    binStep: args.bin_step,
+    baseFactor: args.base_factor,
+    initialPrice: args.initial_price,
+  }),
+  signer: (args) => args.owner,
+});
+
+const buildSeedLadderTx = txTool({
+  name: "build_seed_ladder_tx",
+  title: "Build an unsigned seed-ladder transaction",
+  description:
+    "Build the unsigned transaction that posts a one-sided ask ladder of shares. Pass the plan from " +
+    "get_sale_plan unchanged, and a freshly generated position keypair to sign with.",
+  inputSchema: z.object({
+    owner: PUBKEY.describe("Wallet posting the ladder."),
+    pool_address: PUBKEY.describe("The share market from build_open_sale_tx."),
+    share_mint: PUBKEY,
+    quote_mint: PUBKEY,
+    position_pubkey: PUBKEY.describe("New position account. Generate a keypair and sign with it."),
+    bin_step: z.number().int().min(1).max(400),
+    plan: z.object({
+      bins: z.array(z.object({ index: z.number(), priceUsd: z.number(), shares: z.number() })),
+      rangeLowUsd: z.number(),
+      rangeHighUsd: z.number(),
+      totalOfferShares: z.number(),
+      weightedAveragePriceUsd: z.number(),
+    }),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/seed-ladder",
+  body: (args) => ({
+    owner: args.owner,
+    poolAddress: args.pool_address,
+    shareMint: args.share_mint,
+    quoteMint: args.quote_mint,
+    positionPubKey: args.position_pubkey,
+    binStep: args.bin_step,
+    plan: args.plan,
+  }),
+  signer: (args) => args.owner,
+});
+
+/// Every tool below is the same thing the web app can do, in the same order an agent would need it:
+/// find out where an address lives, price it, find what a wallet owns, then build the transactions.
 export const TOOLS: AnyTool[] = [
+  whereIsAddress,
+  listClusters,
   pricePosition,
-  listVaults,
+  getPoolSeries,
   getReport,
+  findPositions,
+  listVaults,
   simulatePreset,
+  getSalePlan,
+  listSalePresets,
+  buildCreateMintTx,
+  buildLaunchTx,
   buildSecuritizeTx,
+  buildStakeTx,
+  buildUnstakeTx,
+  buildHarvestTx,
+  buildCrankTx,
+  buildOpenSaleTx,
+  buildSeedLadderTx,
 ];
 
 export function findTool(name: string): AnyTool | undefined {

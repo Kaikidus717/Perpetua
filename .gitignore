@@ -21,3 +21,66 @@ scripts/out/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# --- secrets: keypairs and tokens never belong in git ---
+keys/*.json
+.env.*
+*netrc
+
+# --- tests: kept on disk, kept out of the repo ---
+**/test/
+**/*.test.ts
+**/__tests__/
+tests/
+
+# --- documents: the spec and the docs tree live on disk, not in git ---
+docs/
+PERPETUA_BUILD_SPEC.md
+
+# --- OS / editor junk ---
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# --- tool caches and local state ---
+.netlify/
+.vercel/
+.eslintcache
+.cache/
+test-results/
+.vitest/
+*.tmp
+*.bak
+*.orig
+
+# --- package-manager noise ---
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- generated function bundle: built by `pnpm build:fn` ---
+netlify/api/api.bundle.cjs
+netlify/api/api.bundle.cjs.map
+
+# --- local scratch (patch/probe output, helper scripts) ---
+*.out
+run-servers.sh
+req*.json
+netuser.json
+login*.out
+_*.mjs
+_*.cjs
+_*.py
+_*.sh
+_*.mts
+_*.json
+_*.txt
+_*.html
+_*.png
+_*.zip
+probe*.mjs
+pools.json
+
+

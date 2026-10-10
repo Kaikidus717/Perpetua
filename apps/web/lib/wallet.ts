@@ -11,6 +11,8 @@ export interface SolanaProvider {
   signAndSendTransaction?(transaction: Transaction): Promise<{ signature: string }>;
   on?(event: string, handler: () => void): void;
   removeListener?(event: string, handler: () => void): void;
+  addEventListener?(event: string, handler: () => void): void;
+  removeEventListener?(event: string, handler: () => void): void;
 }
 
 /// What Solana wallets put on `window`. They all expose the same provider shape; they just disagree
@@ -28,19 +30,77 @@ interface WalletGlobals {
 /// this role: they hold no Solana keys and cannot sign a Solana transaction.
 export const SUPPORTED_WALLETS = "Phantom, Solflare, Backpack or Glow";
 
+/// Wallets are other people's code injected into our page, and reading them has to be assumed unsafe.
+/// Some extensions hand out a `Proxy` whose frozen `on` method is answered with a *different*
+/// function, and the JavaScript engine throws from inside the reader's frame:
+///
+///   'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy
+///   target but the proxy did not return its actual value
+///
+/// A wallet that behaves like that should cost the visitor a connected wallet — never the page.
+function read<T>(value: () => T): T | undefined {
+  try {
+    return value();
+  } catch {
+    return undefined;
+  }
+}
+
+/// A wallet's own message when it fails, with the proxy case replaced by something a person can act
+/// on. Everything else is passed through unchanged: "user rejected the request" is worth reading.
+export function walletError(cause: unknown): string {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return /proxy/i.test(detail)
+    ? "Your wallet extension refused the request. Reload the page, and reconnect the wallet if it keeps happening."
+    : detail;
+}
+
 export function solanaProvider(): SolanaProvider | undefined {
-  const wallets = globalThis as unknown as WalletGlobals;
-  return (
-    wallets.solana ??
-    wallets.phantom?.solana ??
-    wallets.solflare ??
-    wallets.backpack ??
-    wallets.glow
-  );
+  return read(() => {
+    const wallets = globalThis as unknown as WalletGlobals;
+    return (
+      wallets.solana ??
+      wallets.phantom?.solana ??
+      wallets.solflare ??
+      wallets.backpack ??
+      wallets.glow
+    );
+  });
+}
+
+/// The address a provider is currently showing, or `null` when it cannot be read — including when
+/// reading it throws.
+export function providerAddress(candidate: SolanaProvider | undefined): string | null {
+  return read(() => candidate?.publicKey?.toBase58()) ?? null;
 }
 
 function provider(): SolanaProvider | undefined {
   return solanaProvider();
+}
+
+/// `on` is only used to keep the shown address fresh, so when a wallet's event methods throw, the
+/// wallet is still perfectly usable. Every step is optional and every step is guarded.
+function wireEvents(detected: SolanaProvider, handler: () => void): () => void {
+  const detach: Array<() => void> = [];
+
+  for (const event of ["connect", "disconnect", "accountChanged"]) {
+    const off = read(() => {
+      if (typeof detected.addEventListener === "function") {
+        detected.addEventListener(event, handler);
+        return () => detected.removeEventListener?.(event, handler);
+      }
+      if (typeof detected.on === "function") {
+        detected.on(event, handler);
+        return () => detected.removeListener?.(event, handler);
+      }
+      return undefined;
+    });
+    if (off) detach.push(off);
+  }
+
+  return () => {
+    for (const off of detach) read(off);
+  };
 }
 
 export function useSolanaWallet() {
@@ -49,19 +109,29 @@ export function useSolanaWallet() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const detected = provider();
-    setAvailable(Boolean(detected));
-    if (detected?.publicKey) setAddress(detected.publicKey.toBase58());
+    let live = true;
+    let unsubscribe: (() => void) | undefined;
 
-    const sync = () => setAddress(provider()?.publicKey?.toBase58() ?? null);
-    detected?.on?.("connect", sync);
-    detected?.on?.("disconnect", sync);
-    detected?.on?.("accountChanged", sync);
+    const detect = () => {
+      if (!live) return;
+      const detected = provider();
+      setAvailable(Boolean(detected));
+      const current = providerAddress(detected);
+      if (current) setAddress(current);
+      if (detected && !unsubscribe) {
+        unsubscribe = wireEvents(detected, () => setAddress(providerAddress(provider())));
+      }
+    };
+
+    detect();
+    // Extensions inject at their own pace. A wallet that arrives after first paint should still be
+    // picked up, instead of leaving every button on the page permanently disabled.
+    const timers = [300, 1200, 3000].map((ms) => window.setTimeout(detect, ms));
 
     return () => {
-      detected?.removeListener?.("connect", sync);
-      detected?.removeListener?.("disconnect", sync);
-      detected?.removeListener?.("accountChanged", sync);
+      live = false;
+      for (const timer of timers) window.clearTimeout(timer);
+      unsubscribe?.();
     };
   }, []);
 
@@ -73,15 +143,15 @@ export function useSolanaWallet() {
     }
     try {
       const result = await detected.connect();
-      setAddress(result.publicKey.toBase58());
+      setAddress(providerAddress(detected) ?? read(() => result.publicKey.toBase58()) ?? null);
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "connection rejected");
+      setError(walletError(cause));
     }
   }, []);
 
   const disconnect = useCallback(async () => {
-    await provider()?.disconnect?.();
+    await read(async () => provider()?.disconnect?.());
     setAddress(null);
   }, []);
 

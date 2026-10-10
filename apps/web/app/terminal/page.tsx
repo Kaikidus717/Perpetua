@@ -3,11 +3,31 @@
 import { FeeChart } from "@/components/FeeChart";
 import { PageHeader } from "@/components/PageHeader";
 import { RiskFlags } from "@/components/RiskFlags";
+import { Spinner } from "@/components/Spinner";
 import { Stat } from "@/components/Stat";
-import { api } from "@/lib/api";
-import { UNKNOWN, compactUsd, pct, usd } from "@/lib/format";
-import { BUTTON_PRIMARY, CARD_MUTED, INPUT_MONO, PAGE, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
-import { useQuery } from "@tanstack/react-query";
+import { api, apiStatus } from "@/lib/api";
+import {
+  POOL_CLUSTER,
+  UNKNOWN,
+  compactUsd,
+  explorerCluster,
+  explorerUrl,
+  pct,
+  shortAddress,
+  usd,
+} from "@/lib/format";
+import {
+  BUTTON_PRIMARY,
+  CARD_MUTED,
+  INPUT_MONO,
+  LINK,
+  PAGE,
+  TD,
+  TD_RIGHT,
+  TH,
+  TH_RIGHT,
+} from "@/lib/ui";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 export default function TerminalPage() {
@@ -19,11 +39,14 @@ export default function TerminalPage() {
     queryKey: ["valuation", active],
     queryFn: () => (active ? api.valuation(active) : Promise.reject(new Error("no pool"))),
     enabled: Boolean(active),
+    /// Keep the last pool's numbers on screen while the next one loads, instead of blanking the page.
+    placeholderData: keepPreviousData,
   });
   const series = useQuery({
     queryKey: ["series", active],
     queryFn: () => (active ? api.series(active) : Promise.reject(new Error("no pool"))),
     enabled: Boolean(active),
+    placeholderData: keepPreviousData,
   });
   const fairValue = valuation.data?.valuation.fairValuePerShareUsd;
   const baseScenario = valuation.data?.valuation.scenarios.find((s) => s.scenario.name === "base");
@@ -31,13 +54,54 @@ export default function TerminalPage() {
     queryKey: ["ladder", fairValue],
     queryFn: () => (fairValue ? api.ladder(fairValue) : Promise.reject(new Error("no price"))),
     enabled: Boolean(fairValue),
+    placeholderData: keepPreviousData,
   });
+  const location = useQuery({
+    queryKey: ["where", active],
+    queryFn: () => (active ? api.where(active) : Promise.reject(new Error("no address"))),
+    enabled: Boolean(active),
+    placeholderData: keepPreviousData,
+  });
+
+  /// Anything still in flight, so the spinner next to the address spins until the answer lands and
+  /// the figures below have settled.
+  const loading =
+    location.isFetching || valuation.isFetching || series.isFetching || ladder.isFetching;
+
+  /// Which cluster the address lives on, and what it is. Fee history is indexed on mainnet only, so a
+  /// devnet pool is a real pool that simply cannot be priced — a different sentence from "no such
+  /// address", and the difference is exactly what a visitor needs to hear.
+  const cluster = location.data?.cluster ?? null;
+  const kind = location.data?.kind ?? null;
+  const linkCluster = cluster ? explorerCluster(cluster) : POOL_CLUSTER;
+
+  function priceMessage(): string {
+    if (location.data && location.data.found.length === 0) {
+      return "Nothing on devnet or mainnet owns that address. Check it and try again.";
+    }
+    /// What it is comes before which cluster it is on: a mint on devnet is still a mint, and saying
+    /// "that is a devnet pool" about one would be wrong twice over.
+    if (kind && kind !== "pool") {
+      return `That address is a ${kind}, not a pool. Paste a pool address to price its fees.`;
+    }
+    if (cluster === "devnet") {
+      return "That is a devnet pool, and fee history is only indexed on mainnet, so it cannot be priced. Its locked positions can still be turned into shares.";
+    }
+    const status = apiStatus(valuation.error);
+    if (status === 422) {
+      return "That pool has not completed a full day of trading yet, so there is no fee history to price. Come back once it has.";
+    }
+    if (status === 404) {
+      return "We cannot find a Meteora pool at that address. Check it and try again.";
+    }
+    return "Pricing is unavailable right now. Please try again in a moment.";
+  }
 
   return (
     <div className={PAGE}>
       <PageHeader
         title="Pricing"
-        description="Price any pool without a wallet. The model fits a decay rate to the trailing fee series and discounts a 365-day projection into a bear / base / bull range."
+        description="Price any pool without a wallet. The model fits a decay rate to the trailing fee series and discounts a 365-day projection into a bear / base / bull range. Fee history comes from Meteora's mainnet data API, so pool links open on Solscan mainnet."
       />
 
       <form
@@ -47,13 +111,20 @@ export default function TerminalPage() {
           setSubmitted(input.trim() || null);
         }}
       >
-        <input
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          aria-label="Pool address to price"
-          placeholder="pool address"
-          className={`${INPUT_MONO} min-w-[22rem] flex-1`}
-        />
+        <div className="relative min-w-[22rem] flex-1">
+          <input
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            aria-label="Pool address to price"
+            placeholder="pool address"
+            className={`${INPUT_MONO} pr-10`}
+          />
+          {loading ? (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2">
+              <Spinner label="Pricing this pool" />
+            </span>
+          ) : null}
+        </div>
         <button type="submit" className={BUTTON_PRIMARY}>
           Price
         </button>
@@ -61,16 +132,33 @@ export default function TerminalPage() {
 
       {!active ? (
         <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
-          Paste a DAMM v2 pool address to price its fee stream.
+          Paste a Meteora pool address to price the fees it earns.
         </div>
       ) : null}
 
-      {active ? <p className="text-center font-mono text-xs text-muted">pricing {active}</p> : null}
+      {active ? (
+        <p className="text-center text-sm text-muted">
+          {kind ? `${kind} · ` : ""}
+          <a
+            href={explorerUrl(active, linkCluster)}
+            target="_blank"
+            rel="noreferrer"
+            className={`font-mono text-xs ${LINK}`}
+          >
+            {shortAddress(active)} ↗
+          </a>{" "}
+          <span className="text-xs">on Solscan, {linkCluster}</span>
+          {cluster ? (
+            <span className="ml-2 rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] uppercase tracking-wide">
+              {cluster === "mainnet-beta" ? "mainnet" : cluster}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
 
       {valuation.isError ? (
         <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
-          No valuation available for that pool. Check the address, or start the API with{" "}
-          <code className="font-mono">pnpm --filter @perpetua/api dev</code>.
+          {priceMessage()}
         </div>
       ) : null}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 const SECONDS_PER_DAY = 86_400;
 
@@ -14,6 +14,20 @@ export function FeeChart({
   height?: number;
 }) {
   const container = useRef<HTMLDivElement>(null);
+
+  /// `days` and `feesUsd` arrive as fresh arrays on every render, so depending on them directly tore
+  /// the chart down and rebuilt it constantly — that is what made the page stutter while scrolling.
+  /// The numbers themselves change only when a fetch lands, so the chart is keyed on the numbers.
+  const signature = `${days.length}|${feesUsd.join(",")}`;
+  const points = useMemo(() => {
+    const end = Math.floor(Date.now() / 1000);
+    const start = end - Math.max(days.length - 1, 0) * SECONDS_PER_DAY;
+    return days.map((_, index) => ({
+      time: start + index * SECONDS_PER_DAY,
+      value: feesUsd[index] ?? 0,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `signature` is the numbers themselves
+  }, [signature]);
 
   useEffect(() => {
     let disposed = false;
@@ -44,14 +58,7 @@ export function FeeChart({
         bottomColor: "rgba(21, 128, 61, 0.01)",
       });
 
-      const end = Math.floor(Date.now() / 1000);
-      const start = end - Math.max(days.length - 1, 0) * SECONDS_PER_DAY;
-      series.setData(
-        days.map((_, index) => ({
-          time: (start + index * SECONDS_PER_DAY) as number,
-          value: feesUsd[index] ?? 0,
-        })) as Parameters<typeof series.setData>[0],
-      );
+      series.setData(points as Parameters<typeof series.setData>[0]);
       chart.timeScale().fitContent();
       remove = () => chart.remove();
     })();
@@ -60,7 +67,7 @@ export function FeeChart({
       disposed = true;
       remove?.();
     };
-  }, [days, feesUsd, height]);
+  }, [points, height]);
 
   return <div ref={container} className="w-full overflow-hidden rounded-md border border-line" />;
 }

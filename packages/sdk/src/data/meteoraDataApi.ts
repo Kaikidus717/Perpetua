@@ -76,8 +76,10 @@ export interface MeteoraDataApiConfig {
 ///
 /// The paths come from the published OpenAPI spec (`https://damm-v2.datapi.meteora.ag/swagger-ui/`):
 /// `/pools`, `/pools/{address}`, `/pools/{address}/ohlcv` and `/pools/{address}/volume/history`.
-/// There is no wallet endpoint on it, so positions are read from the chain instead — see
-/// `DammV2Adapter`.
+/// The API also exposes wallet endpoints (`/wallets/{wallet}/open_positions`, `/wallets/{wallet}/total`
+/// and friends), but it indexes mainnet only, so positions are read from the chain instead — see
+/// `DammV2Adapter`. That keeps the devnet flows working, and custody decisions should not rest on an
+/// indexer when the chain can answer directly.
 ///
 /// Every failure is thrown, never absorbed. An unreachable endpoint has to surface as an error,
 /// because the alternative is a number that looks live and is not.

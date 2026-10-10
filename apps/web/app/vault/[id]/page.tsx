@@ -2,10 +2,12 @@
 
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
+import { SellShares } from "@/components/SellShares";
+import { Spinner } from "@/components/Spinner";
 import { Stat } from "@/components/Stat";
 import { VaultActions } from "@/components/VaultActions";
 import { api } from "@/lib/api";
-import { explorerUrl, shortAddress } from "@/lib/format";
+import { explorerUrl, shortAddress, txUrl } from "@/lib/format";
 import { CARD, CARD_MUTED, LINK, PAGE, TD, TH } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
@@ -34,7 +36,7 @@ export default function VaultPage() {
     return (
       <div className={PAGE}>
         <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
-          Vault not found. It may not be indexed yet.
+          We couldn&apos;t find that vault. Check the address and try again.
         </div>
       </div>
     );
@@ -49,14 +51,17 @@ export default function VaultPage() {
         description="Hold shares to earn a slice of the fees this position keeps producing."
       />
 
-      <a
-        href={explorerUrl(address)}
-        target="_blank"
-        rel="noreferrer"
-        className={`break-all font-mono text-sm ${LINK}`}
-      >
-        {address}
-      </a>
+      <div className="flex flex-wrap items-center gap-3">
+        <a
+          href={explorerUrl(address)}
+          target="_blank"
+          rel="noreferrer"
+          className={`break-all font-mono text-sm ${LINK}`}
+        >
+          {address}
+        </a>
+        {vault.isPending ? <Spinner label="Loading this vault" /> : null}
+      </div>
 
       {vault.data ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -104,7 +109,12 @@ export default function VaultPage() {
       ) : null}
 
       <Section title="Activity" description="Stakes, harvests and claims, as they land on-chain.">
-        {events.isPending ? <p className="text-sm text-muted">Loading activity…</p> : null}
+        {events.isPending ? (
+          <p className="flex items-center gap-2 text-sm text-muted">
+            <Spinner label="Loading activity" />
+            Loading activity…
+          </p>
+        ) : null}
         {events.data && events.data.events.length === 0 ? (
           <p className="text-sm text-muted">Nothing has happened yet.</p>
         ) : null}
@@ -115,7 +125,7 @@ export default function VaultPage() {
                 <div className="flex items-center justify-between gap-4">
                   <span className="font-medium text-ink">{event.name}</span>
                   <a
-                    href={`https://solscan.io/tx/${event.signature}`}
+                    href={txUrl(event.signature)}
                     target="_blank"
                     rel="noreferrer"
                     className={`font-mono text-xs ${LINK}`}
@@ -131,6 +141,10 @@ export default function VaultPage() {
       </Section>
 
       <VaultActions vault={address} />
+
+      {vault.data ? (
+        <SellShares shareMint={vault.data.vault.shareMint} pool={vault.data.vault.pool} />
+      ) : null}
     </div>
   );
 }

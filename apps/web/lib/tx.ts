@@ -375,6 +375,11 @@ export async function createLockedPosition(
   createTx.partialSign(positionNft);
   const signature = await send(provider, createTx, cluster);
 
+  /// Wait for it to land. The caller rescans the wallet the instant this returns, and a wallet that
+  /// only *sent* the transaction would leave that scan looking at a chain where the position does not
+  /// exist yet — which reads as "nothing was created".
+  await new Connection(rpcUrl(cluster), "confirmed").confirmTransaction(signature, "confirmed");
+
   return {
     pool,
     position,

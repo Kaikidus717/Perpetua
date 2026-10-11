@@ -227,8 +227,11 @@ export function LaunchDeploy({
           className={INPUT_MONO}
         />
         <span className="block text-xs text-muted">
-          A public link to the logo, hosted anywhere (IPFS, Arweave, your own site). The metadata
-          document itself is served by this app — you do not have to publish anything.
+          A direct link to an image file —{" "}
+          <span className="text-ink">.png, .jpg, .gif or .svg</span>, ending in the file name (for
+          example https://…/logo.png). Host it anywhere public: your own site, IPFS or Arweave. It
+          must be the image itself, not a page containing it, and it has to stay short (about 80
+          characters) because it travels inside the metadata link below.
         </span>
       </label>
 

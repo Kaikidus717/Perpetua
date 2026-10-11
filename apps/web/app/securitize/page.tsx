@@ -226,7 +226,13 @@ export default function SecuritizePage() {
       </Section>
 
       {!position && cluster ? (
-        <CreateLockedPosition cluster={cluster} onCreated={() => void positions.refetch()} />
+        <CreateLockedPosition
+          cluster={cluster}
+          onCreated={async () => {
+            const scanned = await positions.refetch();
+            return (scanned.data?.positions.length ?? 0) > 0;
+          }}
+        />
       ) : null}
 
       {position ? (

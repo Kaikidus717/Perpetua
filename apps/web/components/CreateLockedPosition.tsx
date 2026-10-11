@@ -16,7 +16,9 @@ export function CreateLockedPosition({
   onCreated,
 }: {
   cluster: string;
-  onCreated?: () => void;
+  /// Rescans the wallet and reports whether a position is now visible. Called repeatedly, because the
+  /// RPC behind the scan can lag a beat behind the confirmation.
+  onCreated?: () => Promise<boolean>;
 }) {
   const wallet = useSolanaWallet();
   const [busy, setBusy] = useState(false);
@@ -35,7 +37,12 @@ export function CreateLockedPosition({
     try {
       const result = await createLockedPosition(provider, cluster);
       setCreated({ position: result.position });
-      onCreated?.();
+      if (onCreated) {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (await onCreated()) break;
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
     } catch (cause) {
       setMessage(humanError(cause, "Creating the position"));
     } finally {

@@ -4,6 +4,7 @@ import { LaunchDeploy } from "@/components/LaunchDeploy";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { api } from "@/lib/api";
+import { useWalletNetwork } from "@/lib/network";
 import {
   BUTTON,
   BUTTON_PRIMARY,
@@ -16,6 +17,7 @@ import {
   TH,
   TH_RIGHT,
 } from "@/lib/ui";
+import { useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -56,10 +58,14 @@ export default function LaunchPage() {
     partnerLiquidityPct: 40,
     lockedPct: 20,
   });
-  /// Meteora's DBC and DAMM v2 programs run on both clusters, so a launch is not tied to devnet:
-  /// mainnet is the default because that is where a token is worth something, and devnet is there to
-  /// rehearse the whole flow for free.
-  const [cluster, setCluster] = useState<"devnet" | "mainnet-beta">("mainnet-beta");
+  const wallet = useSolanaWallet();
+  const network = useWalletNetwork(wallet.address);
+  /// A launch lands wherever the wallet signs, so the network follows the wallet rather than asking.
+  /// The buttons below stay as an override for the case where you know better, and a mismatch is
+  /// called out instead of being left to fail at the wallet.
+  const [override, setOverride] = useState<"devnet" | "mainnet-beta" | null>(null);
+  const cluster = override ?? network.cluster ?? "mainnet-beta";
+  const mismatched = Boolean(network.cluster && network.cluster !== cluster);
 
   const preset = useQuery({ queryKey: ["preset", form], queryFn: () => api.preset(form) });
 
@@ -94,18 +100,31 @@ export default function LaunchPage() {
 
       <section className={`${CARD} space-y-2 p-5`}>
         <span className="text-sm text-ink">Where to launch</span>
+        <p className="text-sm text-muted">
+          {network.cluster
+            ? `Your wallet is on ${network.label}, so the launch goes there.`
+            : "Connect a wallet and this follows it. Until then, mainnet."}
+        </p>
         <div className="flex flex-wrap gap-2">
           {(["mainnet-beta", "devnet"] as const).map((option) => (
             <button
               key={option}
               type="button"
-              onClick={() => setCluster(option)}
+              onClick={() => setOverride(option)}
               className={cluster === option ? BUTTON_PRIMARY : BUTTON}
             >
               {option === "mainnet-beta" ? "Mainnet" : "Devnet"}
             </button>
           ))}
         </div>
+        {mismatched ? (
+          <p className="text-sm text-warn">
+            This wallet is on {network.label}, but the launch is set to{" "}
+            {cluster === "mainnet-beta" ? "mainnet" : cluster}. The transaction would be built for{" "}
+            {cluster}, and a {network.label} wallet cannot sign it — switch the wallet&apos;s
+            network, or pick its network above.
+          </p>
+        ) : null}
         <p className="text-xs text-muted">
           Both networks run Meteora&apos;s programs. Mainnet is where a token has real traders and
           real liquidity; devnet is where you can rehearse the same flow for free.

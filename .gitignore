@@ -1,11 +1,3 @@
-# ===========================================================================
-# Perpetua — repository ignore rules.
-#
-# Everything local to a working copy is excluded here — dependencies, build
-# output, secrets and scratch files — so the committed tree is only the project.
-# ===========================================================================
-
-# --- dependencies and build output ---
 node_modules/
 dist/
 build/
@@ -17,14 +9,12 @@ coverage/
 target/
 *.tsbuildinfo
 
-# --- generated artifacts ---
 netlify/api/api.bundle.cjs
 netlify/api/api.bundle.cjs.map
 test-ledger/
 scripts/out/
 tests/fixtures/
 
-# --- local logs, scratch output and probe dumps ---
 *.log
 *.out
 *.tmp
@@ -36,7 +26,6 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# --- secrets: keypairs, tokens and credentials never belong in git ---
 .env
 .env.*
 !.env.example
@@ -52,19 +41,15 @@ id_ed25519*
 *credentials*.json
 service-account*.json
 serviceAccount*.json
-# The devnet program keypair is committed on purpose: it fixes the deployed program address, so a
-# clean clone reproduces it. It holds no value and controls nothing but a throwaway devnet program.
 keys/*.json
 !keys/perpetua_vault-devnet.json
 
-# --- test suites ---
 **/test/
 **/__tests__/
 **/*.test.ts
 **/*.test.tsx
 **/*.spec.ts
 
-# --- scratch scripts ---
 _*.mjs
 _*.cjs
 _*.js
@@ -82,7 +67,6 @@ _*.yaml
 _*.yml
 probe*.mjs
 
-# --- OS, editor and tool caches ---
 .DS_Store
 Thumbs.db
 desktop.ini

@@ -35,15 +35,17 @@ export function metadataUri(fields: {
   name: string;
   symbol: string;
   description: string;
-  image: string;
+  /// Optional. Leave it blank and the metadata endpoint fills in the default logo, so a launch never
+  /// needs a hosted image before it works.
+  image?: string;
   external?: string;
 }): string {
   const search = new URLSearchParams({
     name: fields.name,
     symbol: fields.symbol,
     description: fields.description,
-    image: fields.image,
   });
+  if (fields.image) search.set("image", fields.image);
   if (fields.external) search.set("external", fields.external);
   return `${apiBase()}/v1/token/metadata?${search.toString()}`;
 }

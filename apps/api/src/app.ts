@@ -227,11 +227,17 @@ const pubkey = z.string().min(32).max(44);
 /// endpoint plus its query string — stays well inside the 200 characters `/v1/tx/launch` accepts. A
 /// longer description or image link has to be hosted by the creator instead, and the launch page
 /// says so rather than letting the transaction fail.
+/// The logo a launch gets when the creator leaves the image field blank. It rides in the document this
+/// endpoint serves rather than in the on-chain `uri`, so a token always has an image without making the
+/// launch link longer than the 200 characters a launch has to fit into.
+const DEFAULT_TOKEN_IMAGE =
+  process.env.TOKEN_IMAGE_URL ?? "https://perpetua-meteora.netlify.app/token-default.png";
+
 const metadataQuery = z.object({
   name: z.string().min(1).max(24),
   symbol: z.string().min(1).max(10),
   description: z.string().min(1).max(60),
-  image: z.string().url().max(80),
+  image: z.string().url().max(80).optional(),
   external: z.string().url().max(60).optional(),
 });
 
@@ -456,7 +462,9 @@ export function createApp(deps: AppDeps): Hono {
   app.get("/v1/token/metadata", (c) => {
     const parsed = metadataQuery.safeParse(c.req.query());
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    const { name, symbol, description, image, external } = parsed.data;
+    const { name, symbol, description, external } = parsed.data;
+    // A blank image falls back to the default logo, so a launch with no hosted art still renders.
+    const image = parsed.data.image ?? DEFAULT_TOKEN_IMAGE;
     return c.json(
       {
         name,

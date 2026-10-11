@@ -81,7 +81,7 @@ export function LaunchDeploy({
   });
   const uri = customUri.trim() || generated;
   const uriTooLong = uri.length > URI_LIMIT;
-  const described = Boolean(customUri.trim() || (description.trim() && image.trim()));
+  const described = Boolean(customUri.trim() || description.trim());
   const filled = Boolean(name.trim() && symbol.trim() && described);
 
   /// The ticker follows the name until the creator edits it themselves.
@@ -225,7 +225,7 @@ export function LaunchDeploy({
       </label>
 
       <label className="block space-y-1 text-sm">
-        <span className="text-ink">Image link</span>
+        <span className="text-ink">Image link (optional)</span>
         <input
           value={image}
           onChange={(event) => setImage(event.target.value)}
@@ -233,11 +233,10 @@ export function LaunchDeploy({
           className={INPUT_MONO}
         />
         <span className="block text-xs text-muted">
-          A direct link to an image file —{" "}
-          <span className="text-ink">.png, .jpg, .gif or .svg</span>, ending in the file name (for
-          example https://…/logo.png). Host it anywhere public: your own site, IPFS or Arweave. It
-          must be the image itself, not a page containing it, and it has to stay short (about 80
-          characters) because it travels inside the metadata link below.
+          Leave this blank and the token is created with a default logo. Otherwise a direct link to
+          an image file — <span className="text-ink">.png, .jpg or .gif</span> — ending in the file
+          name, for example https://…/logo.png. Host it anywhere public: your own site, IPFS or
+          Arweave.
         </span>
       </label>
 
@@ -284,7 +283,7 @@ export function LaunchDeploy({
 
       {!filled && !launch ? (
         <p className="text-xs text-muted">
-          Fill in a name, ticker, description and image link to enable the deploy.
+          Fill in a name, ticker and description to enable the deploy.
         </p>
       ) : null}
 

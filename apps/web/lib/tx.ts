@@ -208,7 +208,7 @@ export async function createBaseMint(
   provider: SolanaProvider,
   decimals: number,
   cluster?: string,
-): Promise<{ mint: string; signature: string }> {
+): Promise<{ mint: string; keypair: Keypair; signature: string }> {
   const mint = Keypair.generate();
   const { transaction } = await post<{ transaction: string }>(
     "/v1/tx/create-mint",
@@ -222,7 +222,7 @@ export async function createBaseMint(
   const tx = Transaction.from(fromBase64(transaction));
   tx.partialSign(mint);
   const signature = await send(provider, tx, cluster);
-  return { mint: mint.publicKey.toBase58(), signature };
+  return { mint: mint.publicKey.toBase58(), keypair: mint, signature };
 }
 
 export interface OpenSaleInput {
@@ -310,9 +310,16 @@ export async function deployLaunch(
   provider: SolanaProvider,
   input: LaunchInput,
   cluster?: string,
+  /// The base mint's keypair. DBC asks the mint to sign alongside the config, so it has to survive
+  /// from `createBaseMint` to here — without it the transaction is one signature short and the wallet
+  /// refuses it.
+  baseMintKeypair?: Keypair,
 ): Promise<{ config: string; pool: string; signature: string }> {
   const creator = requirePublicKey(provider);
   const config = Keypair.generate();
+  if (baseMintKeypair && baseMintKeypair.publicKey.toBase58() !== input.baseMint) {
+    throw new Error("that base mint keypair does not match this launch");
+  }
   const { pool, transaction } = await post<{ config: string; pool: string; transaction: string }>(
     "/v1/tx/launch",
     {
@@ -325,7 +332,8 @@ export async function deployLaunch(
     cluster,
   );
   const tx = Transaction.from(fromBase64(transaction));
-  tx.partialSign(config);
+  if (baseMintKeypair) tx.partialSign(config, baseMintKeypair);
+  else tx.partialSign(config);
   const signature = await send(provider, tx, cluster);
   return { config: config.publicKey.toBase58(), pool, signature };
 }

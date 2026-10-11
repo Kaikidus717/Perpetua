@@ -8,6 +8,7 @@ import { networkLabel, useWalletNetwork } from "@/lib/network";
 import { createBaseMint, deployLaunch } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, INPUT_MONO, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import type { Keypair } from "@solana/web3.js";
 import { useState } from "react";
 
 /// The API's launch route accepts a metadata link up to this long, so the form checks it here rather
@@ -53,6 +54,9 @@ export function LaunchDeploy({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [mint, setMint] = useState<string | null>(null);
+  /// The base mint signs the launch as well as the config, so its keypair is kept from the moment the
+  /// token is created until the launch is deployed. Without it the transaction is one signature short.
+  const [mintKeypair, setMintKeypair] = useState<Keypair | null>(null);
   const [launch, setLaunch] = useState<{ config: string; pool: string; signature: string } | null>(
     null,
   );
@@ -113,6 +117,7 @@ export function LaunchDeploy({
     void run("Create the token", async () => {
       const result = await createBaseMint(provider, 6, cluster);
       setMint(result.mint);
+      setMintKeypair(result.keypair);
       setMessage("Token created.");
     });
   }
@@ -136,6 +141,7 @@ export function LaunchDeploy({
           partnerPermanentLockedLiquidityPercentage: 0,
         },
         cluster,
+        mintKeypair ?? undefined,
       );
       setLaunch(result);
       setMessage(`Launch deployed on ${networkLabel(cluster)}.`);
@@ -269,7 +275,7 @@ export function LaunchDeploy({
         <button
           type="button"
           onClick={deploy}
-          disabled={!ready || busy !== null || !mint || !filled || uriTooLong}
+          disabled={!ready || busy !== null || !mintKeypair || !filled || uriTooLong}
           className={BUTTON}
         >
           {busy === "Deploy the launch" ? "Waiting for signature…" : "Deploy the launch"}

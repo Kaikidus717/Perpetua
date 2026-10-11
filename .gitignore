@@ -2,8 +2,7 @@
 # Perpetua — repository ignore rules.
 #
 # Everything local to a working copy is excluded here — dependencies, build
-# output, secrets, scratch/debug tooling and AI-assistant files — so the
-# committed tree is only the project itself.
+# output, secrets and scratch files — so the committed tree is only the project.
 # ===========================================================================
 
 # --- dependencies and build output ---
@@ -58,14 +57,14 @@ serviceAccount*.json
 keys/*.json
 !keys/perpetua_vault-devnet.json
 
-# --- tests: the TypeScript unit suites stay local; the on-chain LiteSVM harness is committed ---
+# --- test suites ---
 **/test/
 **/__tests__/
 **/*.test.ts
 **/*.test.tsx
 **/*.spec.ts
 
-# --- scratch / throwaway scripts (leading underscore or probe- prefix) ---
+# --- scratch scripts ---
 _*.mjs
 _*.cjs
 _*.js
@@ -103,34 +102,5 @@ desktop.ini
 .vercel/
 .wrangler/
 .pnpm-store/
-
-# --- AI assistant / agent tooling (never part of the project) ---
-.kilo*
-.cline/
-.clinerules*
-.cursor/
-.cursorrules
-.cursorindexingignore
-.windsurf/
-.windsurfrules
-.aider*
-.continue/
-.continueignore
-.specstory/
-.roo/
-.qwen/
-.gemini/
-.codex/
-.openai/
-.codeium/
-.tabnine*
-.sourcegraph/
-.agent/
-.ai/
-.prompts/
-prompts/
-.github/copilot-instructions.md
-CLAUDE.md
-AGENTS.md
 
 

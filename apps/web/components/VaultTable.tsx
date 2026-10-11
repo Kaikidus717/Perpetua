@@ -7,7 +7,7 @@ export function VaultTable({ vaults }: { vaults: VaultSummary[] }) {
   if (vaults.length === 0) {
     return (
       <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
-        Nothing indexed yet. Vaults show up here a minute or two after they are created.
+        No vaults yet. A vault appears here the moment a locked position is securitized on devnet.
       </div>
     );
   }

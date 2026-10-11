@@ -72,9 +72,9 @@ pub fn handle_create_vault(ctx: Context<CreateVault>) -> Result<()> {
     );
     require!(lock.permanent_locked > 0, PerpetuaError::NoPermanentLock);
 
-    // Spike S9: read the fee mints' Token-2022 extensions. A TransferHook mint is refused
-    // outright; pausable, permanent-delegate and transfer-fee mints are allowed but flagged
-    // so the valuation engine discounts the stream.
+    // Read the fee mints' Token-2022 extensions. A TransferHook mint is refused outright;
+    // pausable, permanent-delegate and transfer-fee mints are allowed but flagged so the
+    // valuation engine discounts the stream.
     let ext_a = extensions::parse_mint_extensions(&ctx.accounts.token_a_mint.data.borrow());
     let ext_b = extensions::parse_mint_extensions(&ctx.accounts.token_b_mint.data.borrow());
     require!(

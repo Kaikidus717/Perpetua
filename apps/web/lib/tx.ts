@@ -2,7 +2,7 @@
 
 import { Connection, Keypair, Transaction } from "@solana/web3.js";
 import { type LadderView, apiBase } from "./api";
-import { providerAddress, type SolanaProvider } from "./wallet";
+import { type SolanaProvider, providerAddress } from "./wallet";
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.devnet.solana.com";
 
@@ -11,8 +11,7 @@ export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.devnet.so
 /// rejected — so it is chosen per call rather than once at build time.
 const RPC_URLS: Record<string, string> = {
   devnet: RPC_URL,
-  "mainnet-beta":
-    process.env.NEXT_PUBLIC_RPC_URL_MAINNET ?? "https://api.mainnet-beta.solana.com",
+  "mainnet-beta": process.env.NEXT_PUBLIC_RPC_URL_MAINNET ?? "https://api.mainnet-beta.solana.com",
 };
 
 function rpcUrl(cluster?: string): string {
@@ -148,6 +147,21 @@ export async function unstakeShares(
 ): Promise<string> {
   const { transaction } = await post<{ transaction: string }>(
     "/v1/tx/unstake",
+    { owner: requirePublicKey(provider), vault, amount: amount.toString() },
+    cluster,
+  );
+  return send(provider, Transaction.from(fromBase64(transaction)), cluster);
+}
+
+/// The force exit: releases shares without the fee claim, for a fee mint that is paused or blocked.
+export async function unstakeNoClaimShares(
+  provider: SolanaProvider,
+  vault: string,
+  amount: bigint,
+  cluster?: string,
+): Promise<string> {
+  const { transaction } = await post<{ transaction: string }>(
+    "/v1/tx/unstake-no-claim",
     { owner: requirePublicKey(provider), vault, amount: amount.toString() },
     cluster,
   );

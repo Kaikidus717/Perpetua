@@ -4,7 +4,18 @@ import { LaunchDeploy } from "@/components/LaunchDeploy";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { api } from "@/lib/api";
-import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, PAGE, TD, TD_RIGHT, TH, TH_RIGHT } from "@/lib/ui";
+import {
+  BUTTON,
+  BUTTON_PRIMARY,
+  CARD,
+  CARD_MUTED,
+  INPUT,
+  PAGE,
+  TD,
+  TD_RIGHT,
+  TH,
+  TH_RIGHT,
+} from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -96,8 +107,8 @@ export default function LaunchPage() {
           ))}
         </div>
         <p className="text-xs text-muted">
-          Both networks run Meteora&apos;s programs. Mainnet is where a token has real traders and real
-          liquidity; devnet is where you can rehearse the same flow for free.
+          Both networks run Meteora&apos;s programs. Mainnet is where a token has real traders and
+          real liquidity; devnet is where you can rehearse the same flow for free.
         </p>
       </section>
 

@@ -14,6 +14,7 @@ import { type Cluster, resolveNetwork } from "@perpetua/shared";
 import {
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
   createInitializeMintInstruction,
   getAssociatedTokenAddressSync,
   getMinimumBalanceForRentExemptMint,
@@ -34,7 +35,9 @@ export const ASSOCIATED_TOKEN_PROGRAM = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
-function readonlyProvider(connection: Connection, feePayer: PublicKey): AnchorProvider {
+/// Builds a read-only Anchor provider: it only reads accounts, so the wallet never signs. Exported
+/// because the vault registry is read from the chain, not from an indexer.
+export function readonlyProvider(connection: Connection, feePayer: PublicKey): AnchorProvider {
   // Read-only provider: it only builds unsigned instructions, the caller's wallet signs them.
   const wallet: Wallet = {
     publicKey: feePayer,
@@ -50,7 +53,18 @@ async function serialize(
   instruction: TransactionInstruction,
   feePayer: string,
 ): Promise<string> {
-  const transaction = new Transaction().add(instruction);
+  return serializeInstructions(connection, [instruction], feePayer);
+}
+
+/// A transaction carrying several instructions. Fee claims and the first stake each need idempotent
+/// account creates in the same transaction as the instruction that uses them, so every builder that
+/// has setup work goes through here.
+async function serializeInstructions(
+  connection: Connection,
+  instructions: TransactionInstruction[],
+  feePayer: string,
+): Promise<string> {
+  const transaction = new Transaction().add(...instructions);
   transaction.feePayer = new PublicKey(feePayer);
   transaction.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
   return transaction
@@ -91,6 +105,28 @@ async function resolveVault(
     cfg.treasury,
   );
   return { client, config, vault, account, claim };
+}
+
+/// `harvest` pays a holder out with `transfer_checked`, so the holder's own fee token accounts have
+/// to exist first. Deriving them as associated accounts and creating them idempotently is what lets
+/// a first harvest succeed instead of failing with `AccountNotInitialized`.
+function ownerFeeAccountSetup(
+  claim: ClaimAccounts,
+  owner: PublicKey,
+  payer: PublicKey,
+): TransactionInstruction[] {
+  return [
+    { mint: claim.tokenAMint, program: claim.tokenAProgram },
+    { mint: claim.tokenBMint, program: claim.tokenBProgram },
+  ].map(({ mint, program }) =>
+    createAssociatedTokenAccountIdempotentInstruction(
+      payer,
+      getAssociatedTokenAddressSync(mint, owner, true, program),
+      owner,
+      mint,
+      program,
+    ),
+  );
 }
 
 export interface CreateVaultParams {
@@ -154,7 +190,9 @@ export async function buildCrankClaim(
     vault: refs.vault,
     ...refs.claim,
   });
-  return serialize(connection, instruction, params.caller);
+  const adapter = new DammV2Adapter(connection);
+  const setup = adapter.claimSetupInstructions(refs.claim, refs.vault, caller);
+  return serializeInstructions(connection, [...setup, instruction], params.caller);
 }
 
 export interface StakeParams {
@@ -184,7 +222,20 @@ export async function buildStake(connection: Connection, params: StakeParams): P
     BigInt(params.amount),
   );
 
-  return serialize(connection, instruction, params.owner);
+  // The vault's share account and the fee accounts the claim pays into are created in the same
+  // transaction: neither `create_vault` nor anything else makes them, so a first stake fails without
+  // this. Both creates are idempotent.
+  const setup = [
+    ...refs.client.shareAccountSetupInstructions({
+      payer: owner,
+      shareMint: refs.account.shareMint,
+      vault: refs.vault,
+      tokenProgram: SHARE_TOKEN_PROGRAM,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM,
+    }),
+    ...new DammV2Adapter(connection).claimSetupInstructions(refs.claim, refs.vault, owner),
+  ];
+  return serializeInstructions(connection, [...setup, instruction], params.owner);
 }
 
 export async function buildUnstake(connection: Connection, params: StakeParams): Promise<string> {
@@ -207,7 +258,54 @@ export async function buildUnstake(connection: Connection, params: StakeParams):
     BigInt(params.amount),
   );
 
-  return serialize(connection, instruction, params.owner);
+  // `unstake` claims before it releases, so it needs the same setup as `stake`: the vault's share
+  // account, and the fee accounts the claim pays into.
+  const setup = [
+    ...refs.client.shareAccountSetupInstructions({
+      payer: owner,
+      shareMint: refs.account.shareMint,
+      vault: refs.vault,
+      tokenProgram: SHARE_TOKEN_PROGRAM,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM,
+    }),
+    ...new DammV2Adapter(connection).claimSetupInstructions(refs.claim, refs.vault, owner),
+  ];
+  return serializeInstructions(connection, [...setup, instruction], params.owner);
+}
+
+/// The escape hatch: takes staked shares out **without** the claim CPI. When a fee mint is paused or
+/// blocked, the normal `unstake` cannot run, and a holder must still be able to leave with the
+/// shares they own. Fees stay in the position and are credited at the next successful touch.
+export async function buildUnstakeNoClaim(
+  connection: Connection,
+  params: StakeParams,
+): Promise<string> {
+  const owner = new PublicKey(params.owner);
+  const refs = await resolveVault(connection, owner, params.vault);
+  const [stake] = findStakePda(refs.client.programId, refs.vault, owner);
+
+  const instruction = await refs.client.unstakeNoClaim(
+    {
+      owner,
+      vault: refs.vault,
+      stake,
+      shareMint: refs.account.shareMint,
+      ownerShareAccount: getAssociatedTokenAddressSync(refs.account.shareMint, owner),
+      vaultShareAccount: getAssociatedTokenAddressSync(refs.account.shareMint, refs.vault, true),
+      shareTokenProgram: SHARE_TOKEN_PROGRAM,
+    },
+    BigInt(params.amount),
+  );
+
+  // The shares are released out of the vault's share account, so it has to exist.
+  const setup = refs.client.shareAccountSetupInstructions({
+    payer: owner,
+    shareMint: refs.account.shareMint,
+    vault: refs.vault,
+    tokenProgram: SHARE_TOKEN_PROGRAM,
+    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM,
+  });
+  return serializeInstructions(connection, [...setup, instruction], params.owner);
 }
 
 export async function buildHarvest(
@@ -242,7 +340,14 @@ export async function buildHarvest(
     tokenBProgram: refs.account.tokenBProgram,
   });
 
-  return serialize(connection, instruction, params.owner);
+  // Harvest pays the holder out of the vault's fee accounts, so both sets have to exist: the vault's
+  // (created here, and by any earlier claim) and the holder's own associated accounts.
+  const adapter = new DammV2Adapter(connection);
+  const setup = [
+    ...adapter.claimSetupInstructions(refs.claim, refs.vault, owner),
+    ...ownerFeeAccountSetup(refs.claim, owner, owner),
+  ];
+  return serializeInstructions(connection, [...setup, instruction], params.owner);
 }
 
 /// Same contract as `serialize`, for builders that hand back a whole SDK transaction instead of a

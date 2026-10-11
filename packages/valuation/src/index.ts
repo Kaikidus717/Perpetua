@@ -7,7 +7,14 @@ import {
   type ValuationResult,
 } from "@perpetua/shared";
 import { blendDecay, cohortPriorFor } from "./cohortPrior.js";
-import { estimateDecay, impliedApr, paybackDays, presentValue, projectFees } from "./model.js";
+import {
+  estimateDecay,
+  impliedApr,
+  netLiquidityShare,
+  paybackDays,
+  presentValue,
+  projectFees,
+} from "./model.js";
 import { computeRiskFlags } from "./risk.js";
 import { buildScenarios } from "./scenarios.js";
 import type { ValuationConfig } from "./types.js";
@@ -42,6 +49,8 @@ export function valuePosition(input: ValuationInput): ValuationResult {
   const floorUsd = Math.max(lastFee * FEE_FLOOR_FRACTION, 1e-6);
 
   const scenarios = buildScenarios(lambda);
+  // The same share `presentValue` discounts with, so payback and present value stay consistent.
+  const netShare = netLiquidityShare(input.liquidityShare, config.protocolFeeBps);
   const valuations: ScenarioValuation[] = scenarios.map((scenario) => {
     const projected = projectFees({
       lastFeeUsd: lastFee * scenario.volumeMultiplier,
@@ -59,7 +68,7 @@ export function valuePosition(input: ValuationInput): ValuationResult {
       scenario,
       presentValueUsd: pv,
       fairValuePerShareUsd: pv / config.shareSupply,
-      paybackDays: paybackDays(projected, input.liquidityShare, pv),
+      paybackDays: paybackDays(projected, netShare, pv),
     };
   });
 

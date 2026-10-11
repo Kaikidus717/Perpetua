@@ -40,6 +40,9 @@ const app = createApp({
   }),
   connections,
   defaultCluster: process.env.CLUSTER === "devnet" ? "devnet" : "mainnet-beta",
+  /// The vault registry is read from the chain the program is deployed on. Devnet today; the deploy
+  /// can point it elsewhere with `VAULT_CLUSTER` when the program ships to another cluster.
+  vaultCluster: process.env.VAULT_CLUSTER === "mainnet-beta" ? "mainnet-beta" : "devnet",
 });
 
 /// The subset of the Functions v1 event we read. Declared inline because the repository does not

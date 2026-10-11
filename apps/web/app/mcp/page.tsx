@@ -113,6 +113,10 @@ const TOOLS: Array<{ name: string; what: string }> = [
     what: "The transaction that takes staked shares back out.",
   },
   {
+    name: "build_unstake_no_claim_tx",
+    what: "The escape hatch: takes shares out without claiming fees, for a fee mint that is paused or blocked.",
+  },
+  {
     name: "build_harvest_tx",
     what: "The transaction that pulls the pool's earned fees into the vault.",
   },
@@ -204,8 +208,8 @@ export default function McpPage() {
               to.
             </li>
             <li>
-              <span className="font-medium">3.</span> Ask about a pool, a locked position or a launch.
-              It reads Perpetua for the answer.
+              <span className="font-medium">3.</span> Ask about a pool, a locked position or a
+              launch. It reads Perpetua for the answer.
             </li>
           </ol>
 
@@ -272,13 +276,13 @@ export default function McpPage() {
         <ul className="space-y-3 text-sm text-ink">
           <li className={`${CARD_MUTED} p-4`}>
             <span className="font-medium">Your keys never move.</span> Perpetua never asks for a
-            private key. When your assistant builds a transaction it comes back unsigned, for your own
-            wallet to sign — or nothing happens.
+            private key. When your assistant builds a transaction it comes back unsigned, for your
+            own wallet to sign — or nothing happens.
           </li>
           <li className={`${CARD_MUTED} p-4`}>
-            <span className="font-medium">Numbers you can trace.</span> Every answer carries where it
-            came from and when it was read, so your assistant can show its working instead of asking
-            you to take a figure on faith.
+            <span className="font-medium">Numbers you can trace.</span> Every answer carries where
+            it came from and when it was read, so your assistant can show its working instead of
+            asking you to take a figure on faith.
           </li>
           <li className={`${CARD_MUTED} p-4`}>
             <span className="font-medium">One source of truth.</span> Your assistant reads the same
@@ -307,4 +311,3 @@ export default function McpPage() {
     </div>
   );
 }
-

@@ -1,10 +1,11 @@
 "use client";
 
-import { api } from "@/lib/api";
-import { QuoteTokenSelect, QUOTE_TOKENS } from "@/components/QuoteTokenSelect";
+import { QUOTE_TOKENS, QuoteTokenSelect } from "@/components/QuoteTokenSelect";
 import { Spinner } from "@/components/Spinner";
+import { api } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl, usd } from "@/lib/format";
 import { humanError } from "@/lib/messages";
+import { useWalletNetwork } from "@/lib/network";
 import { openSale, seedLadder } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
@@ -43,6 +44,11 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
     queryFn: () => api.ladder(fairValue ?? 0),
     enabled: Boolean(fairValue),
   });
+
+  /// The share token these transactions move lives on devnet, so a mainnet wallet cannot sign for it.
+  /// Naming the wallet's network is the difference between "nothing to sell" and "wrong network".
+  const network = useWalletNetwork(wallet.address);
+  const wrongNetwork = network.cluster === "mainnet-beta";
 
   const preset = presets.data?.presets[presetIndex];
   const provider = solanaProvider();
@@ -117,6 +123,19 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         <p className="font-mono text-xs text-muted">{shortAddress(wallet.address ?? "")}</p>
       )}
 
+      {ready && wrongNetwork ? (
+        <p className="text-sm text-warn">
+          This wallet is on {network.label}. Creating the market and listing the ladder need the
+          vault&apos;s share token, which lives on devnet — switch the wallet to devnet (Phantom:
+          Settings → Developer Settings → Change Network → Devnet) and reload to sell these.
+        </p>
+      ) : null}
+      {ready && network.label && !wrongNetwork ? (
+        <p className="text-xs text-muted">
+          This wallet is on {network.label}, where these shares live.
+        </p>
+      ) : null}
+
       <QuoteTokenSelect value={quoteMint} onChange={setQuoteMint} />
 
       <label className="block space-y-1 text-sm">
@@ -169,7 +188,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         <button
           type="button"
           onClick={createMarket}
-          disabled={!ready || busy !== null || !preset || !fairValue}
+          disabled={!ready || busy !== null || !preset || !fairValue || wrongNetwork}
           className={BUTTON_PRIMARY}
         >
           {busy === "Create the market" ? "Waiting for signature…" : "Create the market"}
@@ -177,7 +196,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         <button
           type="button"
           onClick={listLadder}
-          disabled={!ready || busy !== null || !market || !plan.data}
+          disabled={!ready || busy !== null || !market || !plan.data || wrongNetwork}
           className={BUTTON}
         >
           {busy === "List the ladder" ? "Waiting for signature…" : "List the ladder"}

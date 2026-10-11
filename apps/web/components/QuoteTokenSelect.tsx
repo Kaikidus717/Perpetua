@@ -1,7 +1,7 @@
 "use client";
 
-import { INPUT } from "@/lib/ui";
 import { shortAddress } from "@/lib/format";
+import { INPUT } from "@/lib/ui";
 
 /// The tokens a market is normally quoted in. SOL is the safe default: wrapped SOL exists on both
 /// devnet and mainnet. USDC differs per cluster, so both are listed.

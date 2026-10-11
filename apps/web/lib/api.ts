@@ -165,7 +165,6 @@ export function apiStatus(error: unknown): number | undefined {
   return error instanceof ApiError ? error.status : undefined;
 }
 
-
 export const api = {
   preset: (params: {
     creatorTradingFeePct?: number;

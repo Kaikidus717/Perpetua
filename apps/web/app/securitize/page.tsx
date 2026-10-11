@@ -7,6 +7,7 @@ import { Stat } from "@/components/Stat";
 import { api } from "@/lib/api";
 import { compactUsd, explorerUrl, shortAddress, txUrl, usd } from "@/lib/format";
 import { humanError } from "@/lib/messages";
+import { networkLabel } from "@/lib/network";
 import { type SecuritizeResult, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT_MONO, LINK, PAGE } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
@@ -137,15 +138,16 @@ export default function SecuritizePage() {
       {cluster === "mainnet-beta" ? (
         <div className={`${CARD_MUTED} space-y-3 p-5 text-sm`}>
           <p className="font-medium text-ink">
-            This wallet is on mainnet, and the share program is not deployed there yet.
+            This wallet is on {networkLabel(cluster)}, and the share program is not deployed there
+            yet.
           </p>
           <p className="text-muted">
             <span className="text-ink">On mainnet you can launch.</span> The{" "}
             <Link href="/launch" className={LINK}>
               Launch plan
             </Link>{" "}
-            page mints a token and opens its bonding-curve pool on mainnet, using the same wallet you
-            have connected now. Mainnet pools can also be priced on the{" "}
+            page mints a token and opens its bonding-curve pool on mainnet, using the same wallet
+            you have connected now. Mainnet pools can also be priced on the{" "}
             <Link href="/terminal" className={LINK}>
               Pricing
             </Link>{" "}
@@ -206,9 +208,9 @@ export default function SecuritizePage() {
             </div>
             {cluster === "mainnet-beta" ? (
               <p className="text-sm text-warn">
-                This wallet is on mainnet. Positions here cannot be turned into shares yet — the
-                vault program is on devnet. Launching a token on mainnet does work, and so does
-                pricing.
+                This wallet is on {networkLabel(cluster)}. Positions here cannot be turned into
+                shares yet — the vault program is on devnet. Launching a token on mainnet does work,
+                and so does pricing.
               </p>
             ) : null}
             {check?.eligible ? (
@@ -232,10 +234,11 @@ export default function SecuritizePage() {
           >
             {busy ? "Waiting for signature…" : "Create shares"}
           </button>
-          {cluster === "mainnet-beta" ? (
+          {cluster ? (
             <p className="text-sm text-muted">
-              Creating shares needs the vault program, which is deployed on devnet only — so this
-              button waits until this wallet is on devnet. Launching on mainnet is unaffected.
+              {cluster === "mainnet-beta"
+                ? `This wallet is on ${networkLabel(cluster)}. Creating shares needs the vault program, which is deployed on devnet only — so this button waits until this wallet is on devnet. Launching on mainnet is unaffected.`
+                : `This wallet is on ${networkLabel(cluster)}, where the vault program lives. Creating the shares is a ${networkLabel(cluster)} transaction.`}
             </p>
           ) : null}
           {txError ? <p className="text-sm text-warn">{txError}</p> : null}

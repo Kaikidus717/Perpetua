@@ -11,11 +11,26 @@ the trust surface small.
 
 | Tool | What it does |
 |---|---|
+| `where_is_address` | Which network owns an address, and what it is. |
+| `list_clusters` | Which networks this deployment serves, and its default. |
 | `price_position` | Fair-value a permanently locked DAMM v2 position, or a whole pool, as a decaying fee stream. Returns base case, bear/base/bull range, implied APR and risk flags. |
-| `list_vaults` | List the indexed Perpetua vaults. |
 | `get_report` | Fee Report Card: valuation plus pooled fee/volume statistics over the window. |
+| `get_pool_series` | The raw daily fees, volume and liquidity a valuation was fitted to. |
+| `find_positions` | A wallet's DAMM v2 positions and whether each can be securitized. |
+| `list_vaults` | List the indexed Perpetua vaults. |
 | `simulate_preset` | Build and validate a DBC fee-split preset, and optionally price the permanently locked share against a live pool. |
+| `get_sale_plan` | The one-sided ask ladder a share sale would post. |
+| `list_sale_presets` | The DLMM bin-step presets a share market can be created at. |
+| `build_create_mint_tx` | Build the **unsigned** transaction that creates a launch's base token. |
+| `build_launch_tx` | Build the **unsigned** DBC config-and-pool launch transaction. |
 | `build_securitize_tx` | Build the **unsigned** `create_vault` transaction for a wallet to sign. |
+| `build_stake_tx` | Build the **unsigned** stake transaction. |
+| `build_unstake_tx` | Build the **unsigned** unstake transaction. |
+| `build_unstake_no_claim_tx` | Build the **unsigned** force-exit transaction (no fee claim). |
+| `build_harvest_tx` | Build the **unsigned** harvest transaction. |
+| `build_crank_tx` | Build the **unsigned** permissionless crank-claim transaction. |
+| `build_open_sale_tx` | Build the **unsigned** transaction that opens the share market. |
+| `build_seed_ladder_tx` | Build the **unsigned** transaction that posts the ask ladder. |
 
 Every result carries an envelope so an agent can attribute the number it just read:
 
@@ -46,8 +61,9 @@ pnpm --filter @perpetua/api dev          # http://localhost:8787
 PERPETUA_API_URL=http://localhost:8787 pnpm --filter @perpetua/mcp start
 ```
 
-`PERPETUA_API_URL` defaults to `http://localhost:8787`. Over stdio, stdout is the protocol channel,
-so all diagnostics go to stderr.
+`PERPETUA_API_URL` defaults to the hosted endpoint (`https://perpetua-meteora.netlify.app/api`), so an
+agent can be pointed at Perpetua with no local checkout; override it for a local or preview API. Over
+stdio, stdout is the protocol channel, so all diagnostics go to stderr.
 
 ### Client configuration
 

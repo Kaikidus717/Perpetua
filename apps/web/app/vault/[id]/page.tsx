@@ -8,7 +8,9 @@ import { Stat } from "@/components/Stat";
 import { VaultActions } from "@/components/VaultActions";
 import { api } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl } from "@/lib/format";
+import { useWalletNetwork } from "@/lib/network";
 import { CARD, CARD_MUTED, LINK, PAGE, TD, TH } from "@/lib/ui";
+import { useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 
@@ -18,6 +20,12 @@ const LIVE_MS = 15_000;
 export default function VaultPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+
+  /// Which network the visitor's wallet signs on, said once at the top of the page. Every action here
+  /// is a devnet transaction, because that is the only cluster the vault program is deployed on — so
+  /// it is worth knowing before the buttons further down stop making sense.
+  const wallet = useSolanaWallet();
+  const network = useWalletNetwork(wallet.address);
 
   const vault = useQuery({
     queryKey: ["vault", id],
@@ -62,6 +70,15 @@ export default function VaultPage() {
         </a>
         {vault.isPending ? <Spinner label="Loading this vault" /> : null}
       </div>
+
+      {network.label ? (
+        <p className="text-xs text-muted">
+          Your wallet is on {network.label}.{" "}
+          {network.cluster === "mainnet-beta"
+            ? "Staking, harvesting and selling shares need devnet, because that is where the vault program lives."
+            : "Staking, harvesting and selling shares all work here."}
+        </p>
+      ) : null}
 
       {vault.data ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

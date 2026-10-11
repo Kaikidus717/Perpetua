@@ -19,6 +19,9 @@ export function FeeChart({
   /// the chart down and rebuilt it constantly — that is what made the page stutter while scrolling.
   /// The numbers themselves change only when a fetch lands, so the chart is keyed on the numbers.
   const signature = `${days.length}|${feesUsd.join(",")}`;
+  // The chart is keyed on the numbers themselves, not on the arrays they arrived in, so `signature`
+  // is the dependency on purpose.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on `signature`
   const points = useMemo(() => {
     const end = Math.floor(Date.now() / 1000);
     const start = end - Math.max(days.length - 1, 0) * SECONDS_PER_DAY;
@@ -26,7 +29,6 @@ export function FeeChart({
       time: start + index * SECONDS_PER_DAY,
       value: feesUsd[index] ?? 0,
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `signature` is the numbers themselves
   }, [signature]);
 
   useEffect(() => {

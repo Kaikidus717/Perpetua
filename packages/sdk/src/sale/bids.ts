@@ -22,7 +22,7 @@ export interface ConvictionOptions {
 
 const HOUR_MS = 3_600_000;
 
-/// Conviction = size * time_in_pool * depth_below_fair_value, matching section 9A.
+/// Conviction = size * time_in_pool * depth_below_fair_value.
 /// Each component is normalised to (0, 1] so the product stays comparable across bids.
 export function convictionScore(input: BidInput, options: ConvictionOptions = {}): ConvictionScore {
   const { halfLifeHours = 72, sizeScaleShares = 1_000_000 } = options;

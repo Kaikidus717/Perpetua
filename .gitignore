@@ -1,86 +1,147 @@
+# ===========================================================================
+# Perpetua — repository ignore rules.
+#
+# Everything local to a working copy is excluded here — dependencies, build
+# output, secrets, scratch/debug tooling and AI-assistant files — so the
+# committed tree is only the project itself.
+# ===========================================================================
+
+# --- dependencies and build output ---
 node_modules/
 dist/
+build/
 .next/
 out/
 coverage/
 .turbo/
-target/
 .anchor/
-test-ledger/
+target/
 *.tsbuildinfo
 
-tests/fixtures/
+# --- generated artifacts ---
+netlify/api/api.bundle.cjs
+netlify/api/api.bundle.cjs.map
+test-ledger/
 scripts/out/
+tests/fixtures/
+
+# --- local logs, scratch output and probe dumps ---
 *.log
-.env
-.env.local
-.env.*.local
-.kilo/
-
-.DS_Store
-.idea/
-.vscode/*
-!.vscode/extensions.json
-
-# --- secrets: keypairs and tokens never belong in git ---
-keys/*.json
-.env.*
-*netrc
-
-# --- tests: kept on disk, kept out of the repo ---
-**/test/
-**/*.test.ts
-**/__tests__/
-tests/
-
-# --- documents: the spec and the docs tree live on disk, not in git ---
-docs/
-PERPETUA_BUILD_SPEC.md
-
-# --- OS / editor junk ---
-Thumbs.db
-desktop.ini
-*.swp
-*.swo
-*~
-
-# --- tool caches and local state ---
-.netlify/
-.vercel/
-.eslintcache
-.cache/
-test-results/
-.vitest/
+*.out
 *.tmp
 *.bak
 *.orig
-
-# --- package-manager noise ---
+*.rej
+*.pid
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# --- generated function bundle: built by `pnpm build:fn` ---
-netlify/api/api.bundle.cjs
-netlify/api/api.bundle.cjs.map
+# --- secrets: keypairs, tokens and credentials never belong in git ---
+.env
+.env.*
+!.env.example
+*netrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*credentials*.json
+service-account*.json
+serviceAccount*.json
+# The devnet program keypair is committed on purpose: it fixes the deployed program address, so a
+# clean clone reproduces it. It holds no value and controls nothing but a throwaway devnet program.
+keys/*.json
+!keys/perpetua_vault-devnet.json
 
-# --- local scratch (patch/probe output, helper scripts) ---
-*.out
-run-servers.sh
-req*.json
-netuser.json
-login*.out
+# --- tests: the TypeScript unit suites stay local; the on-chain LiteSVM harness is committed ---
+**/test/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+
+# --- top-level markdown: the README lives on GitHub, not in this tree ---
+/README.md
+/README (3).md
+/PERPETUA_BUILD_SPEC.md
+
+# --- scratch / throwaway scripts (leading underscore or probe- prefix) ---
 _*.mjs
 _*.cjs
+_*.js
+_*.mts
 _*.py
 _*.sh
-_*.mts
 _*.json
 _*.txt
+_*.md
 _*.html
 _*.png
 _*.zip
+_*.csv
+_*.yaml
+_*.yml
 probe*.mjs
+verify-spec.mjs
+run-servers.sh
 pools.json
+req*.json
+netuser.json
+login*.out
+
+# --- OS, editor and tool caches ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.fleet/
+*.swp
+*.swo
+*~
+*.code-workspace
+.eslintcache
+.cache/
+.vitest/
+.nyc_output/
+.netlify/
+.vercel/
+.wrangler/
+.pnpm-store/
+
+# --- AI assistant / agent tooling (never part of the project) ---
+.kilo*
+.cline/
+.clinerules*
+.cursor/
+.cursorrules
+.cursorindexingignore
+.windsurf/
+.windsurfrules
+.aider*
+.continue/
+.continueignore
+.specstory/
+.roo/
+.qwen/
+.gemini/
+.codex/
+.openai/
+.codeium/
+.tabnine*
+.sourcegraph/
+.agent/
+.ai/
+.prompts/
+prompts/
+.github/copilot-instructions.md
+CLAUDE.md
+AGENTS.md
 
 

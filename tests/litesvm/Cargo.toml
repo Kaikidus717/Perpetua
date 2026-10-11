@@ -1,0 +1,33 @@
+[package]
+name = "perpetua_vault_litesvm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# Regular dependencies: the harness lives in `src/lib.rs`, so these must be visible to the lib
+# target, not just to the integration tests.
+[dependencies]
+litesvm = "0.17"
+# litesvm 0.17 is built against solana-address 2.x, where the canonical key type is `Address`,
+# not the legacy `Pubkey`. Matching the major version keeps the two crates speaking the same type.
+solana-address = "2.7"
+# Depend on the program itself so the harness uses `perpetua_vault::ID` rather than repeating the
+# address in a second place where it could drift from `declare_id!`.
+perpetua_vault = { path = "../../programs/perpetua_vault", features = ["no-entrypoint"] }
+# Pinned to the ranges litesvm itself uses, so transaction types line up across crates.
+solana-account = "4.3.0"
+solana-instruction = "~3.5.0"
+solana-keypair = "3.1.2"
+solana-message = "4.2.4"
+solana-signer = "3.0.1"
+solana-transaction = "4.1.5"
+sha2 = "0.10"
+
+[[test]]
+name = "boot"
+path = "tests/boot.rs"
+
+[[test]]
+name = "flow"
+path = "tests/flow.rs"

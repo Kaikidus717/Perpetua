@@ -1,7 +1,8 @@
 "use client";
 
-import { APP_CLUSTER } from "@/lib/format";
+import { useWalletNetwork } from "@/lib/network";
 import { CONTAINER } from "@/lib/ui";
+import { useSolanaWallet } from "@/lib/wallet";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,6 +19,8 @@ const LINKS = [
 
 export function Header() {
   const pathname = usePathname();
+  const wallet = useSolanaWallet();
+  const network = useWalletNetwork(wallet.address);
 
   return (
     <header className="border-b border-line bg-canvas">
@@ -25,13 +28,19 @@ export function Header() {
         <Link href="/" className="flex items-baseline gap-2 py-4">
           <span className="text-[15px] font-semibold tracking-tight text-ink">Perpetua</span>
           <span className="hidden text-xs text-muted sm:inline">the fee-rights exchange</span>
-          {/* Vaults and transactions live on the cluster this build talks to, while pool pricing is
-              always mainnet. Saying which one this is stops the two being mistaken for each other. */}
-          {APP_CLUSTER === "mainnet" ? null : (
-            <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted">
-              {APP_CLUSTER}
+          {/* The network the connected wallet signs on — the one thing here that is a fact about the
+              visitor rather than about this deployment. It stays hidden until a wallet answers,
+              because a build-time label would be wrong for half the audience: one deployment serves
+              mainnet and devnet at once (pool pricing and launches are mainnet; vaults and share
+              transactions are devnet). The pages spell that out where it changes what you can do. */}
+          {network.label ? (
+            <span
+              title="The network your wallet signs on. Vaults and share transactions are devnet; pool pricing and token launches are mainnet."
+              className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted"
+            >
+              {network.label} wallet
             </span>
-          )}
+          ) : null}
         </Link>
 
         <nav aria-label="Main" className="flex flex-wrap items-center gap-1 py-2">

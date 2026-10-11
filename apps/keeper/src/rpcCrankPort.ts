@@ -57,6 +57,13 @@ export class RpcCrankPort implements CrankPort {
       ...claim,
     });
 
-    return this.provider.sendAndConfirm(new Transaction().add(instruction));
+    // The claim pays into accounts nothing else creates, so a first crank has to make them in the
+    // same transaction. The creates are idempotent, so later cranks are unaffected.
+    const setup = this.dammV2.claimSetupInstructions(
+      claim,
+      vaultAddress,
+      this.provider.wallet.publicKey,
+    );
+    return this.provider.sendAndConfirm(new Transaction().add(...setup, instruction));
   }
 }

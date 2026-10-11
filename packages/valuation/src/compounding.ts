@@ -7,7 +7,7 @@ export interface CompoundingInput {
   poolLiquidityUsd: number;
   /// Position liquidity as a fraction of pool liquidity at the start.
   positionShare: number;
-  /// This position's compounding share, in basis points (`c` in the spec).
+  /// This position's compounding share, in basis points.
   compoundingFeeBps: number;
   /// The compounding rate of *the rest of the pool*, 0-1. Zero means every other LP claims,
   /// which is what lets this position's share grow.

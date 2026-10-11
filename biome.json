@@ -8,11 +8,21 @@
       "target",
       "coverage",
       ".turbo",
+      ".netlify",
+      ".kilo",
+      "netlify/api/api.bundle.cjs",
       "scripts/out",
       "apps/web/next-env.d.ts",
       "packages/sdk/src/idl",
       "programs/perpetua_vault/idl",
-      "packages/valuation/backtest/results.md"
+      "packages/valuation/backtest/results.md",
+      "_*.mjs",
+      "_*.cjs",
+      "_*.mts",
+      "_*.json",
+      "_*.txt",
+      "*.log",
+      "*.out"
     ]
   },
   "formatter": {

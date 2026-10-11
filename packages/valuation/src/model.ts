@@ -78,9 +78,15 @@ export function projectFees(options: ProjectionOptions): number[] {
   return series;
 }
 
+/// The share of pool fees a holder actually keeps, after the protocol skim. Every money figure has
+/// to use this, or payback and present value disagree the moment `protocolFeeBps > 0`.
+export function netLiquidityShare(liquidityShare: number, protocolFeeBps: number): number {
+  return liquidityShare * (1 - protocolFeeBps / BPS_DENOMINATOR);
+}
+
 export function presentValue(projectedFeesUsd: number[], options: PresentValueOptions): number {
   const { liquidityShare, protocolFeeBps, discountRateAnnual, horizonDays } = options;
-  const netShare = liquidityShare * (1 - protocolFeeBps / BPS_DENOMINATOR);
+  const netShare = netLiquidityShare(liquidityShare, protocolFeeBps);
   let total = 0;
   for (let t = 1; t <= horizonDays; t += 1) {
     const fee = projectedFeesUsd[t - 1];

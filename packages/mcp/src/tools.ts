@@ -9,6 +9,12 @@ export interface ToolContext {
 
 const PUBKEY = z.string().min(32).max(44);
 
+/// The share mint is created by `create_vault`, so the caller supplies a fresh keypair whose account
+/// does not exist yet, and that keypair signs the transaction.
+const FRESH_SHARE_MINT =
+  "A fresh share mint: this transaction creates it, so supply a new keypair that signs and whose " +
+  "account does not exist yet.";
+
 const API = {
   vaults: "/v1/vaults",
   poolYield: (pool: string) => `/v1/pools/${pool}/yield`,
@@ -340,7 +346,7 @@ const buildSecuritizeTx = defineTool({
     token_b_mint: PUBKEY,
     token_a_program: PUBKEY,
     token_b_program: PUBKEY,
-    share_mint: PUBKEY.describe("Share mint; must already exist and be owned by the creator."),
+    share_mint: PUBKEY.describe(FRESH_SHARE_MINT),
   }),
   async handler(args, port, ctx) {
     const path = API.createVaultTx;
@@ -371,7 +377,9 @@ const buildSecuritizeTx = defineTool({
         unsigned_transaction_base64: transaction,
         requires_signature: true,
         signer: args.creator,
-        note: "Sign this with the creator wallet and submit it. Perpetua never holds keys.",
+        note:
+          "Two signatures are required: the creator wallet, and the fresh share-mint keypair. " +
+          "Perpetua never holds keys.",
       },
     };
   },
@@ -547,8 +555,20 @@ const getSalePlan = defineTool({
       .optional()
       .describe("How far below fair value the ladder starts."),
     upper_pct: z.number().gt(0).optional().describe("How far above fair value the ladder ends."),
-    bin_step: z.number().int().min(1).max(400).optional().describe("DLMM bin step in basis points."),
-    bin_count: z.number().int().min(1).max(1400).optional().describe("Number of bins to spread over."),
+    bin_step: z
+      .number()
+      .int()
+      .min(1)
+      .max(400)
+      .optional()
+      .describe("DLMM bin step in basis points."),
+    bin_count: z
+      .number()
+      .int()
+      .min(1)
+      .max(1400)
+      .optional()
+      .describe("Number of bins to spread over."),
   }),
   async handler(args, port, ctx) {
     const path = "/v1/sale/plan";
@@ -662,6 +682,25 @@ const buildUnstakeTx = txTool({
     ...clusterShape,
   }),
   path: "/v1/tx/unstake",
+  body: (args) => ({ owner: args.owner, vault: args.vault, amount: args.amount }),
+  signer: (args) => args.owner,
+});
+
+/// The escape hatch when a fee mint is paused or blocked and the normal unstake cannot claim.
+const buildUnstakeNoClaimTx = txTool({
+  name: "build_unstake_no_claim_tx",
+  title: "Build an unsigned force-exit transaction",
+  description:
+    "Build the unsigned transaction that takes staked shares out without claiming fees first. This is " +
+    "the escape hatch for a fee mint that is paused or blocked, where the normal unstake cannot run. " +
+    "Fees stay in the position and are credited at the next successful claim.",
+  inputSchema: z.object({
+    owner: PUBKEY.describe("Share holder signing."),
+    vault: PUBKEY.describe("Perpetua vault address."),
+    amount: z.string().regex(/^\d+$/).describe("Share amount in base units, as a decimal string."),
+    ...clusterShape,
+  }),
+  path: "/v1/tx/unstake-no-claim",
   body: (args) => ({ owner: args.owner, vault: args.vault, amount: args.amount }),
   signer: (args) => args.owner,
 });
@@ -782,6 +821,7 @@ export const TOOLS: AnyTool[] = [
   buildSecuritizeTx,
   buildStakeTx,
   buildUnstakeTx,
+  buildUnstakeNoClaimTx,
   buildHarvestTx,
   buildCrankTx,
   buildOpenSaleTx,

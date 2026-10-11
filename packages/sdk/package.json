@@ -59,7 +59,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "ops:create-vault": "tsx scripts/create-vault.ts",
     "ops:devnet-e2e": "tsx scripts/devnet-e2e.ts",
     "ops:probe": "tsx scripts/devnet-probe.ts",

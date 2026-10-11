@@ -1,13 +1,18 @@
 "use client";
 
-import { api } from "@/lib/api";
 import { Spinner } from "@/components/Spinner";
 import { txUrl } from "@/lib/format";
 import { humanError } from "@/lib/messages";
-import { crankClaim, harvestFees, stakeShares, unstakeShares } from "@/lib/tx";
+import { useWalletNetwork } from "@/lib/network";
+import {
+  crankClaim,
+  harvestFees,
+  stakeShares,
+  unstakeNoClaimShares,
+  unstakeShares,
+} from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 export function VaultActions({ vault }: { vault: string }) {
@@ -40,14 +45,10 @@ export function VaultActions({ vault }: { vault: string }) {
   const VAULT_CLUSTER = "devnet";
 
   /// A mainnet wallet cannot sign these — the program is not deployed there — so the buttons stay
-  /// shut and the page says why, instead of failing at the wallet.
-  const location = useQuery({
-    queryKey: ["where", wallet.address],
-    queryFn: () =>
-      wallet.address ? api.where(wallet.address) : Promise.reject(new Error("no wallet")),
-    enabled: Boolean(wallet.address),
-  });
-  const wrongNetwork = location.data?.cluster === "mainnet-beta";
+  /// shut and the page says why, instead of failing at the wallet. The answer comes from the shared
+  /// lookup in `lib/network`, so this card and the header badge can never disagree.
+  const network = useWalletNetwork(wallet.address);
+  const wrongNetwork = network.cluster === "mainnet-beta";
 
   const amountValue = (() => {
     try {
@@ -68,9 +69,16 @@ export function VaultActions({ vault }: { vault: string }) {
 
       {ready && wrongNetwork ? (
         <p className="text-sm text-warn">
-          This wallet is on mainnet. Staking, harvesting and cranking need the vault program, which is
-          deployed on devnet only — switch the wallet to devnet (Phantom: Settings → Developer
-          Settings → Change Network → Devnet) and reload to use these.
+          This wallet is on {network.label}. Staking, harvesting and cranking need the vault
+          program, which is deployed on devnet only — switch the wallet to devnet (Phantom: Settings
+          → Developer Settings → Change Network → Devnet) and reload to use these. Every transaction
+          below is a devnet one.
+        </p>
+      ) : null}
+      {ready && network.label && !wrongNetwork ? (
+        <p className="text-xs text-muted">
+          This wallet is on {network.label}, where the vault program lives — so these are{" "}
+          {network.label} transactions.
         </p>
       ) : null}
 
@@ -86,7 +94,9 @@ export function VaultActions({ vault }: { vault: string }) {
           disabled={!ready || busy !== null || !amountValue || wrongNetwork}
           onClick={() => {
             if (activeProvider && amountValue) {
-              void run("stake", () => stakeShares(activeProvider, vault, amountValue, VAULT_CLUSTER));
+              void run("stake", () =>
+                stakeShares(activeProvider, vault, amountValue, VAULT_CLUSTER),
+              );
             }
           }}
           className={BUTTON_PRIMARY}
@@ -109,9 +119,25 @@ export function VaultActions({ vault }: { vault: string }) {
         </button>
         <button
           type="button"
+          disabled={!ready || busy !== null || !amountValue || wrongNetwork}
+          title="Release shares without claiming fees, for a paused or blocked fee mint."
+          onClick={() => {
+            if (activeProvider && amountValue) {
+              void run("force exit", () =>
+                unstakeNoClaimShares(activeProvider, vault, amountValue, VAULT_CLUSTER),
+              );
+            }
+          }}
+          className={BUTTON}
+        >
+          Force exit
+        </button>
+        <button
+          type="button"
           disabled={!ready || busy !== null || wrongNetwork}
           onClick={() => {
-            if (activeProvider) void run("harvest", () => harvestFees(activeProvider, vault, VAULT_CLUSTER));
+            if (activeProvider)
+              void run("harvest", () => harvestFees(activeProvider, vault, VAULT_CLUSTER));
           }}
           className={BUTTON}
         >
@@ -121,13 +147,19 @@ export function VaultActions({ vault }: { vault: string }) {
           type="button"
           disabled={!ready || busy !== null || wrongNetwork}
           onClick={() => {
-            if (activeProvider) void run("crank", () => crankClaim(activeProvider, vault, VAULT_CLUSTER));
+            if (activeProvider)
+              void run("crank", () => crankClaim(activeProvider, vault, VAULT_CLUSTER));
           }}
           className={BUTTON}
         >
           Crank claim
         </button>
       </div>
+
+      <p className="text-xs text-muted">
+        Force exit releases your shares without claiming fees. Use it if a fee mint is paused or
+        blocked; have another wallet crank, then harvest, to collect what is owed.
+      </p>
 
       {busy ? (
         <p className="flex items-center gap-2 text-sm text-muted">

@@ -1,13 +1,13 @@
 "use client";
 
-import { QuoteTokenSelect, QUOTE_TOKENS } from "@/components/QuoteTokenSelect";
-import { api, metadataUri } from "@/lib/api";
+import { QUOTE_TOKENS, QuoteTokenSelect } from "@/components/QuoteTokenSelect";
+import { metadataUri } from "@/lib/api";
 import { explorerCluster, explorerUrl, shortAddress, txUrl } from "@/lib/format";
 import { humanError } from "@/lib/messages";
+import { networkLabel, useWalletNetwork } from "@/lib/network";
 import { createBaseMint, deployLaunch } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, INPUT_MONO, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 /// The API's launch route accepts a metadata link up to this long, so the form checks it here rather
@@ -62,15 +62,9 @@ export function LaunchDeploy({
 
   /// Which network the connected wallet is on. A launch only lands where the wallet signs, so a wallet
   /// on one network and a choice of the other is worth saying out loud before anyone signs anything.
-  const location = useQuery({
-    queryKey: ["where", wallet.address],
-    queryFn: () =>
-      wallet.address ? api.where(wallet.address) : Promise.reject(new Error("no wallet")),
-    enabled: Boolean(wallet.address),
-  });
-  const walletCluster = location.data?.cluster ?? null;
-  const networkName = (value: string) => (value === "mainnet-beta" ? "mainnet" : value);
-  const mismatched = Boolean(walletCluster && walletCluster !== cluster);
+  /// Shared with the header badge through `lib/network`, so the two cannot contradict each other.
+  const network = useWalletNetwork(wallet.address);
+  const mismatched = Boolean(network.cluster && network.cluster !== cluster);
 
   /// The metadata document is built here and served by this app: the fields above become a URL, and
   /// that URL is what the pool stores on-chain. Nobody has to go and publish a JSON file first. A
@@ -94,7 +88,12 @@ export function LaunchDeploy({
 
   function onSymbol(value: string) {
     setSymbolEdited(true);
-    setSymbol(value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10));
+    setSymbol(
+      value
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 10),
+    );
   }
 
   async function run(label: string, action: () => Promise<void>) {
@@ -139,27 +138,27 @@ export function LaunchDeploy({
         cluster,
       );
       setLaunch(result);
-      setMessage(`Launch deployed on ${cluster === "mainnet-beta" ? "mainnet" : cluster}.`);
+      setMessage(`Launch deployed on ${networkLabel(cluster)}.`);
     });
   }
 
   return (
     <section className={`${CARD} space-y-4 p-5`}>
       <h2 className="text-base font-semibold text-ink">
-        Deploy this launch on {networkName(cluster)}
+        Deploy this launch on {networkLabel(cluster)}
       </h2>
 
       {mismatched ? (
         <p className="text-xs text-warn">
-          Your wallet is on {networkName(walletCluster ?? "")}, and this launch is set to{" "}
-          {networkName(cluster)}. A wallet signs on whichever network it is switched to, so change the
-          wallet&apos;s network or the choice above before signing.
+          Your wallet is on {networkLabel(network.cluster)}, and this launch is set to{" "}
+          {networkLabel(cluster)}. A wallet signs on whichever network it is switched to, so change
+          the wallet&apos;s network or the choice above before signing.
         </p>
       ) : null}
       <p className="text-sm text-muted">
         Creates the token, then the DBC config and its pool, using exactly the split planned above.
-        Graduation to DAMM v2 happens on the curve&apos;s own schedule; the migrated position is what
-        Create shares securitizes.
+        Graduation to DAMM v2 happens on the curve&apos;s own schedule; the migrated position is
+        what Create shares securitizes.
       </p>
 
       {!ready ? (
@@ -214,8 +213,8 @@ export function LaunchDeploy({
           className={INPUT}
         />
         <span className="block text-xs text-muted">
-          Wallets and explorers show this under the ticker. It travels inside the metadata link below,
-          so keep it short.
+          Wallets and explorers show this under the ticker. It travels inside the metadata link
+          below, so keep it short.
         </span>
       </label>
 
@@ -234,9 +233,7 @@ export function LaunchDeploy({
       </label>
 
       <details className="text-sm">
-        <summary className="cursor-pointer text-muted">
-          Use your own metadata link instead
-        </summary>
+        <summary className="cursor-pointer text-muted">Use your own metadata link instead</summary>
         <input
           value={customUri}
           onChange={(event) => setCustomUri(event.target.value)}

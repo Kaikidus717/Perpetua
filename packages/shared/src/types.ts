@@ -69,7 +69,9 @@ export interface ValuationResult {
   fairValuePerShareUsd: number;
   scenarios: ScenarioValuation[];
   riskFlags: RiskFlag[];
-  impliedAprAt: (priceUsd: number, horizonDays?: number) => number;
+  /// Implied annual return at a given per-share price. The model already fixes the horizon, so the
+  /// only free variable is the price.
+  impliedAprAt: (priceUsd: number) => number;
 }
 
 export interface VaultSummary {

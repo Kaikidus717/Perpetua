@@ -3,7 +3,6 @@ import { type Cluster, PROGRAM_IDS } from "@perpetua/shared";
 import { getMint } from "@solana/spl-token";
 import { type Connection, PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
-import dlmmRequire from "./dlmmRequire.cjs";
 import type {
   CreatePairResult,
   DlmmPort,
@@ -12,6 +11,7 @@ import type {
   SeedLadderResult,
   SharePoolParams,
 } from "../ports.js";
+import dlmmRequire from "./dlmmRequire.cjs";
 
 const DLMM_PROGRAM_ID = new PublicKey(PROGRAM_IDS.dlmm);
 

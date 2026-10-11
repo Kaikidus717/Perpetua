@@ -1,3 +1,4 @@
+import { PerpetuaVaultClient } from "@perpetua/sdk";
 import { DammV2Adapter } from "@perpetua/sdk/adapters/damm-v2";
 import { buildFinanceablePreset, validatePreset } from "@perpetua/sdk/dbc";
 import type { DataApiPort } from "@perpetua/sdk/ports";
@@ -11,6 +12,8 @@ import {
   type ValuationInput,
   type ValuationResult,
   type ValuationRiskInput,
+  type VaultEvent,
+  type VaultSummary,
 } from "@perpetua/shared";
 import { valuePosition } from "@perpetua/valuation";
 import { type Connection, PublicKey } from "@solana/web3.js";
@@ -18,6 +21,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { readVaultEvents } from "./events.js";
 import { createMcpEndpoint } from "./mcp.js";
 import type { Store } from "./store/types.js";
 import {
@@ -30,7 +34,9 @@ import {
   buildSeedLadder,
   buildStake,
   buildUnstake,
+  buildUnstakeNoClaim,
   listDlmmPresets,
+  readonlyProvider,
 } from "./tx.js";
 import { SHARE_TOKEN_PROGRAM, SYSTEM_PROGRAM } from "./tx.js";
 
@@ -44,6 +50,9 @@ export interface AppDeps {
   connections?: Partial<Record<ClusterName, Connection>>;
   /// Which cluster `connection` belongs to. Defaults to devnet, where the vault program lives.
   defaultCluster?: ClusterName;
+  /// The cluster the `perpetua_vault` program is deployed on — the one a vault registry is read from.
+  /// Defaults to devnet (the only cluster it is deployed on today); changeable per deploy.
+  vaultCluster?: ClusterName;
   /// Browser origins allowed to call the API. Defaults to `CORS_ORIGINS`.
   corsOrigins?: string[];
 }
@@ -75,8 +84,95 @@ function connectionFor(deps: AppDeps, requested?: unknown): Connection | undefin
   const map = clusterMap(deps);
   const named = asClusterName(requested);
   if (named && map[named]) return map[named];
-  const fallback = asClusterName(deps.defaultCluster) ?? (Object.keys(map)[0] as ClusterName | undefined);
+  const fallback =
+    asClusterName(deps.defaultCluster) ?? (Object.keys(map)[0] as ClusterName | undefined);
   return fallback ? map[fallback] : undefined;
+}
+
+/// The connection the vault program lives behind. The registry is read from the chain, not an
+/// indexer, which is what lets the hosted app show live vaults with no other service running.
+function vaultConnection(deps: AppDeps): Connection | undefined {
+  const map = clusterMap(deps);
+  const named = deps.vaultCluster ?? "devnet";
+  return map[named] ?? map.devnet ?? map["mainnet-beta"] ?? Object.values(map)[0];
+}
+
+/// How long a chain read of the vault registry is reused, so a warm instance answers the landing page
+/// from memory instead of hitting the RPC on every request.
+const VAULT_CACHE_MS = 30_000;
+const vaultCache = new Map<string, { at: number; vaults: VaultSummary[] }>();
+
+/// Every vault the program holds, read from `program.account.vault.all()`. `null` on any failure, so a
+/// flaky RPC degrades to "no vaults" rather than a 500 on the landing page; a previous successful
+/// read is served stale rather than dropped.
+async function chainVaults(deps: AppDeps): Promise<VaultSummary[] | null> {
+  const connection = vaultConnection(deps);
+  if (!connection) return null;
+  const key = deps.vaultCluster ?? "devnet";
+  const cached = vaultCache.get(key);
+  if (cached && Date.now() - cached.at < VAULT_CACHE_MS) return cached.vaults;
+  try {
+    const provider = readonlyProvider(connection, PublicKey.default);
+    const rows = await PerpetuaVaultClient.create(provider).listVaults();
+    const vaults = rows.map(({ address, account }) => ({
+      address: address.toBase58(),
+      pool: account.pool.toBase58(),
+      position: account.position.toBase58(),
+      shareMint: account.shareMint.toBase58(),
+      creator: account.creator.toBase58(),
+      totalStaked: account.totalStaked.toString(),
+      totalClaimedA: account.totalClaimedA.toString(),
+      totalClaimedB: account.totalClaimedB.toString(),
+      createdAt: Number(account.createdAt.toString()),
+    }));
+    vaultCache.set(key, { at: Date.now(), vaults });
+    return vaults;
+  } catch {
+    return cached?.vaults ?? null;
+  }
+}
+
+/// What the Vaults page shows: the chain's vaults, plus anything an indexer has stored that the chain
+/// does not already hold. The chain wins a collision, because it is the authority.
+async function mergedVaults(deps: AppDeps): Promise<VaultSummary[]> {
+  const [chain, indexed] = await Promise.all([chainVaults(deps), deps.store.listVaults()]);
+  if (!chain) return indexed;
+  const known = new Set(chain.map((vault) => vault.address));
+  return [...chain, ...indexed.filter((vault) => !known.has(vault.address))];
+}
+
+/// How far back the activity feed looks, and how long a result is reused. A vault page re-reads every
+/// 15s, and without the cache each read would replay the same transactions against the RPC.
+const EVENTS_LOOKBACK = 15;
+const EVENTS_CACHE_LIMIT = 50;
+const EVENTS_CACHE_MS = 20_000;
+const eventsCache = new Map<string, { at: number; events: VaultEvent[] }>();
+
+/// A vault's activity feed: what the chain recorded for it, plus anything an indexer has stored that
+/// the chain does not already show. Decoded on demand from transaction logs, so no indexer runs.
+async function vaultEvents(deps: AppDeps, id: string): Promise<VaultEvent[]> {
+  const key = `${deps.vaultCluster ?? "devnet"}:${id}`;
+  const cached = eventsCache.get(key);
+  if (cached && Date.now() - cached.at < EVENTS_CACHE_MS) return cached.events;
+
+  const indexed = await deps.store.listVaultEvents(id, EVENTS_CACHE_LIMIT);
+  let chain: VaultEvent[] = [];
+  const connection = vaultConnection(deps);
+  if (connection) {
+    try {
+      chain = await readVaultEvents(connection, new PublicKey(id), EVENTS_LOOKBACK);
+    } catch {
+      chain = [];
+    }
+  }
+
+  const seen = new Set(chain.map((event) => `${event.signature}:${event.name}`));
+  const merged = [
+    ...chain,
+    ...indexed.filter((event) => !seen.has(`${event.signature}:${event.name}`)),
+  ].sort((a, b) => b.slot - a.slot);
+  eventsCache.set(key, { at: Date.now(), events: merged });
+  return merged;
 }
 
 /// What an account is, told by the program that owns it. Enough to label an address in the UI without
@@ -89,7 +185,6 @@ function kindOf(owner: string, size: number): string {
   if (owner === SHARE_TOKEN_PROGRAM.toBase58()) return "account";
   return "account";
 }
-
 
 /// Browser origins allowed to call the API, comma-separated in `CORS_ORIGINS`. Development
 /// defaults to the local web app; production is same-origin only until a deploy opts in, so the
@@ -197,19 +292,27 @@ export function createApp(deps: AppDeps): Hono {
   const mcp = createMcpEndpoint(app);
   app.all("/mcp", (c) => mcp(c.req.raw));
 
-  app.get("/v1/vaults", async (c) => c.json({ vaults: await deps.store.listVaults() }));
+  // The vault registry is read from the chain the program is deployed on, so the list is live even
+  // with no indexer running; an indexer's store, when present, is merged on top.
+  app.get("/v1/vaults", async (c) => c.json({ vaults: await mergedVaults(deps) }));
 
   app.get("/v1/vaults/:id", async (c) => {
-    const vault = await deps.store.getVault(c.req.param("id"));
-    if (!vault) return c.json({ error: "vault not found" }, 404);
-    return c.json({ vault });
+    const id = c.req.param("id");
+    const indexed = await deps.store.getVault(id);
+    if (indexed) return c.json({ vault: indexed });
+    const chain = await chainVaults(deps);
+    const found = chain?.find((vault) => vault.address === id);
+    if (!found) return c.json({ error: "vault not found" }, 404);
+    return c.json({ vault: found });
   });
 
+  // The activity feed is decoded from the chain on demand — the vault's transactions, then the Anchor
+  // events inside their logs — so the page shows a real history with no indexer running.
   app.get("/v1/vaults/:id/events", async (c) => {
     const parsed = limitQuery.safeParse(c.req.query());
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    const events = await deps.store.listVaultEvents(c.req.param("id"), parsed.data.limit);
-    return c.json({ events });
+    const events = await vaultEvents(deps, c.req.param("id"));
+    return c.json({ events: events.slice(0, parsed.data.limit) });
   });
 
   // Read from the DAMM v2 program rather than Meteora's data API. The data API does expose wallet
@@ -320,7 +423,9 @@ export function createApp(deps: AppDeps): Hono {
     const found: Array<{ cluster: ClusterName; owner: string; kind: string }> = [];
     /// Mainnet first. An address can exist on both clusters — wrapped SOL does — and when it does, the
     /// mainnet one is the meaningful answer: a devnet copy is usually a fixture of the same token.
-    const order = (["mainnet-beta", "devnet"] as ClusterName[]).filter((name) => clusterMap(deps)[name]);
+    const order = (["mainnet-beta", "devnet"] as ClusterName[]).filter(
+      (name) => clusterMap(deps)[name],
+    );
     for (const cluster of order) {
       const connection = clusterMap(deps)[cluster];
       if (!connection) continue;
@@ -540,6 +645,19 @@ export function createApp(deps: AppDeps): Hono {
     }
   });
 
+  app.post("/v1/tx/unstake-no-claim", async (c) => {
+    const connection = connectionFor(deps, c.req.query("cluster"));
+    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    try {
+      return c.json({ transaction: await buildUnstakeNoClaim(connection, parsed.data) });
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
+  });
+
   app.post("/v1/tx/harvest", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
     if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
@@ -558,7 +676,18 @@ export function createApp(deps: AppDeps): Hono {
     }
   });
 
-  app.get("/v1/stats", async (c) => c.json({ stats: await deps.store.stats() }));
+  app.get("/v1/stats", async (c) => {
+    const [stored, chain] = await Promise.all([deps.store.stats(), chainVaults(deps)]);
+    const live = chain?.length ?? 0;
+    // Counts come from the chain when no indexer has already totalled them.
+    return c.json({
+      stats: {
+        ...stored,
+        vaults: Math.max(stored.vaults, live),
+        positionsSecuritized: Math.max(stored.positionsSecuritized, live),
+      },
+    });
+  });
 
   app.get("/v1/stream", (c) =>
     streamSSE(c, async (stream) => {

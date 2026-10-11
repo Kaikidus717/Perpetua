@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { createConnection } from "@perpetua/sdk";
 import { MeteoraDataApi } from "@perpetua/sdk/data";
 import { resolveNetwork } from "@perpetua/shared";
-import { type Connection } from "@solana/web3.js";
+import type { Connection } from "@solana/web3.js";
 import { type ClusterName, createApp } from "./app.js";
 import { InMemoryStore } from "./store/memory.js";
 import type { Store } from "./store/types.js";
@@ -41,6 +41,9 @@ const app = createApp({
   dataApi: new MeteoraDataApi({ baseUrl: dataApiUrl }),
   connections,
   defaultCluster,
+  /// The vault registry is read from the chain the program is deployed on. Devnet today; the deploy
+  /// can point it elsewhere with `VAULT_CLUSTER` when the program ships to another cluster.
+  vaultCluster: process.env.VAULT_CLUSTER === "mainnet-beta" ? "mainnet-beta" : "devnet",
 });
 
 serve({ fetch: app.fetch, port }, (info) => {

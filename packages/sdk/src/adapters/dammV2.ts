@@ -1,12 +1,38 @@
-import { CpAmm, type PoolState, type PositionState, getTokenProgram } from "@meteora-ag/cp-amm-sdk";
+import {
+  ActivationType,
+  BaseFeeMode,
+  CollectFeeMode,
+  CpAmm,
+  MAX_SQRT_PRICE,
+  MIN_SQRT_PRICE,
+  type PoolFeesParams,
+  type PoolState,
+  type PositionState,
+  getBaseFeeParams,
+  getDynamicFeeParams,
+  getSqrtPriceFromPrice,
+  getTokenProgram,
+} from "@meteora-ag/cp-amm-sdk";
 import { CP_AMM_POOL_AUTHORITY, PROGRAM_IDS } from "@perpetua/shared";
 import type { PositionSummary } from "@perpetua/shared";
 import {
+  MINT_SIZE,
   TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
+  createInitializeMintInstruction,
+  createMintToInstruction,
   getAssociatedTokenAddressSync,
+  getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
-import { type Connection, PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import {
+  type Connection,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  type TransactionInstruction,
+} from "@solana/web3.js";
+import BN from "bn.js";
 import { findCpAmmEventAuthority, findCpAmmPositionNftAccount } from "../vault/pda.js";
 import type { ClaimAccounts } from "../vault/types.js";
 
@@ -36,6 +62,27 @@ export interface VaultFeeRefs {
   tokenBMint: PublicKey;
   tokenAProgram: PublicKey;
   tokenBProgram: PublicKey;
+}
+
+export interface LockedPositionParams {
+  /// Wallet that pays and will own the position. It signs both transactions.
+  payer: string;
+  /// Fresh keypairs the caller generated. The mints sign the setup, the NFT signs the pool.
+  mintA: string;
+  mintB: string;
+  positionNft: string;
+  decimals?: number;
+}
+
+export interface LockedPositionResult {
+  pool: string;
+  position: string;
+  mintA: string;
+  mintB: string;
+  /// Creates the two mints, their token accounts and the supply. Sign with the two mints.
+  setup: Transaction;
+  /// Creates the pool and its permanently locked position. Sign with the position NFT.
+  create: Transaction;
 }
 
 type PositionRow = { position: PublicKey } | PublicKey;
@@ -108,6 +155,106 @@ export class DammV2Adapter {
   /// NFT then fails on the owner check.
   positionNftAccount(nftMint: PublicKey): PublicKey {
     return findCpAmmPositionNftAccount(nftMint);
+  }
+
+  /// Builds a brand-new DAMM v2 pool whose initial position is **permanently locked**, so a wallet
+  /// that owns nothing can create something to securitize. Two unsigned transactions come back — the
+  /// mints first, then the pool that needs them to exist — because one transaction would not fit.
+  /// Nothing is signed here: the caller's wallet signs, and so do the fresh keypairs it generated for
+  /// the mints and the position NFT.
+  async buildLockedPosition(params: LockedPositionParams): Promise<LockedPositionResult> {
+    const payer = new PublicKey(params.payer);
+    const mintA = new PublicKey(params.mintA);
+    const mintB = new PublicKey(params.mintB);
+    const positionNft = new PublicKey(params.positionNft);
+    const decimals = params.decimals ?? 6;
+    const amount = new BN(1_000_000_000);
+
+    const rent = await getMinimumBalanceForRentExemptMint(this.connection);
+    const setup = new Transaction();
+    const fund: Array<{ mint: PublicKey; account: PublicKey }> = [];
+    for (const mint of [mintA, mintB]) {
+      setup.add(
+        SystemProgram.createAccount({
+          fromPubkey: payer,
+          newAccountPubkey: mint,
+          space: MINT_SIZE,
+          lamports: rent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeMintInstruction(mint, decimals, payer, payer),
+      );
+      fund.push({
+        mint,
+        account: getAssociatedTokenAddressSync(mint, payer, true, TOKEN_PROGRAM_ID),
+      });
+    }
+    for (const { mint, account } of fund) {
+      setup.add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          payer,
+          account,
+          payer,
+          mint,
+          TOKEN_PROGRAM_ID,
+        ),
+        createMintToInstruction(mint, account, payer, BigInt(amount.toString())),
+      );
+    }
+
+    const initSqrtPrice = getSqrtPriceFromPrice("1", decimals, decimals);
+    const poolFees: PoolFeesParams = {
+      baseFee: getBaseFeeParams({
+        baseFeeMode: BaseFeeMode.FeeTimeSchedulerExponential,
+        feeTimeSchedulerParam: {
+          startingFeeBps: 100,
+          endingFeeBps: 25,
+          numberOfPeriod: 60,
+          totalDuration: 3600,
+        },
+      }),
+      compoundingFeeBps: 0,
+      padding: 0,
+      dynamicFee: getDynamicFeeParams(25),
+    };
+
+    const created = await this.cpAmm.createCustomPool({
+      payer,
+      creator: payer,
+      positionNft,
+      tokenAMint: mintA,
+      tokenBMint: mintB,
+      tokenAAmount: amount,
+      tokenBAmount: amount,
+      sqrtMinPrice: MIN_SQRT_PRICE,
+      sqrtMaxPrice: MAX_SQRT_PRICE,
+      liquidityDelta: this.cpAmm.getLiquidityDelta({
+        maxAmountTokenA: amount,
+        maxAmountTokenB: amount,
+        sqrtPrice: initSqrtPrice,
+        sqrtMinPrice: MIN_SQRT_PRICE,
+        sqrtMaxPrice: MAX_SQRT_PRICE,
+        collectFeeMode: CollectFeeMode.BothToken,
+      }),
+      initSqrtPrice,
+      poolFees,
+      hasAlphaVault: false,
+      activationType: ActivationType.Timestamp,
+      collectFeeMode: CollectFeeMode.BothToken,
+      activationPoint: null,
+      tokenAProgram: TOKEN_PROGRAM_ID,
+      tokenBProgram: TOKEN_PROGRAM_ID,
+      isLockLiquidity: true,
+    });
+
+    return {
+      pool: created.pool.toBase58(),
+      position: created.position.toBase58(),
+      mintA: params.mintA,
+      mintB: params.mintB,
+      setup,
+      create: created.tx,
+    };
   }
 
   isPermanentLocked(state: PositionState): boolean {

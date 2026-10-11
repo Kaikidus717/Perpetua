@@ -493,3 +493,44 @@ export async function listDlmmPresets(connection: Connection): Promise<DlmmPrese
   const adapter = new DlmmAdapter({ connection, cluster: cluster() });
   return adapter.listPresets();
 }
+
+export interface LockedPositionParams {
+  owner: string;
+  mintA: string;
+  mintB: string;
+  positionNft: string;
+}
+
+export interface LockedPositionResponse {
+  pool: string;
+  position: string;
+  mintA: string;
+  mintB: string;
+  setup: string;
+  create: string;
+}
+
+/// Builds a fresh DAMM v2 pool whose initial position is permanently locked and owned by `owner`, so
+/// a wallet that holds nothing can create something to securitize. Two unsigned transactions come
+/// back — the mints, then the pool — and the owner plus the freshly generated keypairs sign. Nothing
+/// is signed here, so no key material reaches the API process.
+export async function buildLockedPosition(
+  connection: Connection,
+  params: LockedPositionParams,
+): Promise<LockedPositionResponse> {
+  const adapter = new DammV2Adapter(connection);
+  const result = await adapter.buildLockedPosition({
+    payer: params.owner,
+    mintA: params.mintA,
+    mintB: params.mintB,
+    positionNft: params.positionNft,
+  });
+  return {
+    pool: result.pool,
+    position: result.position,
+    mintA: result.mintA,
+    mintB: result.mintB,
+    setup: await serializeTransaction(connection, result.setup, params.owner),
+    create: await serializeTransaction(connection, result.create, params.owner),
+  };
+}

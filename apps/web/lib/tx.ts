@@ -329,3 +329,57 @@ export async function deployLaunch(
   const signature = await send(provider, tx, cluster);
   return { config: config.publicKey.toBase58(), pool, signature };
 }
+
+export interface LockedPositionResult {
+  pool: string;
+  position: string;
+  mintA: string;
+  mintB: string;
+  signature: string;
+}
+
+/// Creates a fresh DAMM v2 pool whose initial position is **permanently locked** and owned by the
+/// connected wallet, so a wallet that holds nothing has something to securitize. Two transactions:
+/// the mints (signed by the two fresh mint keypairs), then the pool (signed by the fresh NFT keypair).
+/// Works on devnet and mainnet alike — the wallet signs, so no key ever leaves it.
+export async function createLockedPosition(
+  provider: SolanaProvider,
+  cluster?: string,
+): Promise<LockedPositionResult> {
+  const owner = requirePublicKey(provider);
+  const mintA = Keypair.generate();
+  const mintB = Keypair.generate();
+  const positionNft = Keypair.generate();
+
+  const { pool, position, setup, create } = await post<{
+    pool: string;
+    position: string;
+    setup: string;
+    create: string;
+  }>(
+    "/v1/tx/create-locked-position",
+    {
+      owner,
+      mintA: mintA.publicKey.toBase58(),
+      mintB: mintB.publicKey.toBase58(),
+      positionNft: positionNft.publicKey.toBase58(),
+    },
+    cluster,
+  );
+
+  const setupTx = Transaction.from(fromBase64(setup));
+  setupTx.partialSign(mintA, mintB);
+  await send(provider, setupTx, cluster);
+
+  const createTx = Transaction.from(fromBase64(create));
+  createTx.partialSign(positionNft);
+  const signature = await send(provider, createTx, cluster);
+
+  return {
+    pool,
+    position,
+    mintA: mintA.publicKey.toBase58(),
+    mintB: mintB.publicKey.toBase58(),
+    signature,
+  };
+}

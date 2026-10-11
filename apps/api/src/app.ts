@@ -30,6 +30,7 @@ import {
   buildCreateVault,
   buildHarvest,
   buildLaunch,
+  buildLockedPosition,
   buildOpenSale,
   buildSeedLadder,
   buildStake,
@@ -250,6 +251,13 @@ const createVaultBody = z.object({
 
 const ownerVaultBody = z.object({ owner: pubkey, vault: pubkey });
 const stakeBody = ownerVaultBody.extend({ amount: z.string().regex(/^\d+$/) });
+
+const lockedPositionBody = z.object({
+  owner: pubkey,
+  mintA: pubkey,
+  mintB: pubkey,
+  positionNft: pubkey,
+});
 
 const presetQuery = z.object({
   creatorTradingFeePct: z.coerce.number().min(0).max(100).default(10),
@@ -582,6 +590,19 @@ export function createApp(deps: AppDeps): Hono {
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
     try {
       return c.json(await buildLaunch(connection, parsed.data));
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
+  });
+
+  app.post("/v1/tx/create-locked-position", async (c) => {
+    const connection = connectionFor(deps, c.req.query("cluster"));
+    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    const parsed = lockedPositionBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    try {
+      return c.json(await buildLockedPosition(connection, parsed.data));
     } catch (error) {
       const { status, message } = chainError(error);
       return c.json({ error: message }, status);

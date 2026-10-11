@@ -1,5 +1,6 @@
 "use client";
 
+import { CreateLockedPosition } from "@/components/CreateLockedPosition";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { Spinner } from "@/components/Spinner";
@@ -223,6 +224,10 @@ export default function SecuritizePage() {
           </div>
         ) : null}
       </Section>
+
+      {!position && cluster ? (
+        <CreateLockedPosition cluster={cluster} onCreated={() => void positions.refetch()} />
+      ) : null}
 
       {position ? (
         <section className="space-y-3">

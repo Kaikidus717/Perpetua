@@ -639,6 +639,51 @@ export async function buildLaunch(
   };
 }
 
+export interface WarmPoolParams {
+  owner: string;
+  vault: string;
+  /// Whole tokens of the pool's token A to trade. Small on purpose: the fee it leaves is the point.
+  tokens?: number;
+}
+
+export interface WarmPoolResponse {
+  pool: string;
+  /// The swap itself. The wallet signs it.
+  swap: string;
+  /// One-time instructions that give a wallet holding none of token A something to trade, when it
+  /// still has that mint's authority. `null` when it already has some.
+  fuel: string | null;
+  amountIn: string;
+}
+
+/// Puts real trading volume on a vault's pool, so a crank has fees to sweep and a harvest has
+/// something to pay. A locked position only ever earns from swaps: without this, a demo crank and
+/// harvest are honest no-ops, which is exactly what "no fees are ready to harvest" means.
+///
+/// Nothing is signed here — the wallet signs, like every other builder. The route that serves this is
+/// devnet-only, because on mainnet manufacturing the fees a share stands for would defeat the point.
+export async function buildWarmPool(
+  connection: Connection,
+  params: WarmPoolParams,
+): Promise<WarmPoolResponse> {
+  const owner = new PublicKey(params.owner);
+  const refs = await resolveVault(connection, owner, params.vault);
+  const adapter = new DammV2Adapter(connection);
+  const built = await adapter.buildVolumeSwap({
+    owner: params.owner,
+    pool: refs.account.pool.toBase58(),
+    tokenAMint: refs.account.tokenAMint.toBase58(),
+    tokenBMint: refs.account.tokenBMint.toBase58(),
+    tokens: params.tokens,
+  });
+  return {
+    pool: built.pool,
+    swap: await serializeTransaction(connection, built.swap, params.owner),
+    fuel: built.fuel ? await serializeTransaction(connection, built.fuel, params.owner) : null,
+    amountIn: built.amountIn,
+  };
+}
+
 /// The DLMM presets available on this cluster, i.e. the bin steps a share pair may be created at.
 /// Cluster-specific, like the accounts they are read from — see `buildOpenSale`.
 export async function listDlmmPresets(

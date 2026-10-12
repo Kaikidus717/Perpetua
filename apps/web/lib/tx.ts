@@ -395,6 +395,39 @@ export async function deployLaunch(
   return { config: config.publicKey.toBase58(), pool, signature };
 }
 
+/// Adds real trading volume on this vault's pool, so the crank that follows has fees to sweep and the
+/// harvest after it has something to pay. A locked position only ever earns from swaps, so a pool
+/// nobody trades makes both buttons honest no-ops — which is what "no fees are ready to harvest"
+/// means, and what makes a demo of them unsatisfying.
+///
+/// Devnet only, and only against the wallet's own pool: whoever opened the pool still holds its
+/// token's mint authority, so it can mint itself something to trade. It costs the wallet a little SOL
+/// and a little of its own token, and it leaves the locked position a real fee.
+export async function warmPool(
+  provider: SolanaProvider,
+  vault: string,
+  cluster?: string,
+  tokens?: number,
+): Promise<WarmPoolResult> {
+  const owner = requirePublicKey(provider);
+  const built = await post<{ pool: string; swap: string; fuel: string | null; amountIn: string }>(
+    "/v1/tx/warm-pool",
+    { owner, vault, ...(tokens ? { tokens } : {}) },
+    cluster,
+  );
+  /// Fuel first — without it the swap has nothing to sell. Both are signed by the wallet, so a
+  /// refusal stops here and the caller decides whether to crack on.
+  if (built.fuel) await send(provider, Transaction.from(fromBase64(built.fuel)), cluster);
+  const signature = await send(provider, Transaction.from(fromBase64(built.swap)), cluster);
+  return { pool: built.pool, signature, amountIn: built.amountIn };
+}
+
+export interface WarmPoolResult {
+  pool: string;
+  signature: string;
+  amountIn: string;
+}
+
 export interface LockedPositionResult {
   pool: string;
   position: string;

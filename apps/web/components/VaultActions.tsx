@@ -10,6 +10,7 @@ import {
   stakeShares,
   unstakeNoClaimShares,
   unstakeShares,
+  warmPool,
 } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
@@ -20,6 +21,8 @@ export function VaultActions({ vault }: { vault: string }) {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  /// Something that *worked* and is worth saying, kept apart from `message`, which is for failures.
+  const [note, setNote] = useState<string | null>(null);
   /// The signature of the last transaction this page sent, so a reader can check it themselves.
   const [confirmed, setConfirmed] = useState<string | null>(null);
 
@@ -29,6 +32,7 @@ export function VaultActions({ vault }: { vault: string }) {
   async function run(label: string, action: () => Promise<string>) {
     setBusy(label);
     setMessage(null);
+    setNote(null);
     setConfirmed(null);
     try {
       const signature = await action();
@@ -43,6 +47,12 @@ export function VaultActions({ vault }: { vault: string }) {
   /// The vault program is deployed on devnet, so every action here is a devnet transaction. Saying so
   /// explicitly keeps it correct even when the deploy's default cluster is mainnet.
   const VAULT_CLUSTER = "devnet";
+
+  /// True when this page may also *create* the fees its buttons collect. A locked position only earns
+  /// from swaps, so on devnet — where the wallet that opened the pool still holds its mint authority —
+  /// "Crank claim" first trades a little of the pool's own token against itself. On mainnet it does
+  /// not: the fees a share is paid have to come from other people's trading.
+  const canAddVolume = VAULT_CLUSTER === "devnet";
 
   /// A mainnet wallet cannot sign these — the program is not deployed there — so the buttons stay
   /// shut and the page says why, instead of failing at the wallet. The answer comes from the shared
@@ -147,8 +157,24 @@ export function VaultActions({ vault }: { vault: string }) {
           type="button"
           disabled={!ready || busy !== null || wrongNetwork}
           onClick={() => {
-            if (activeProvider)
-              void run("crank", () => crankClaim(activeProvider, vault, VAULT_CLUSTER));
+            if (!activeProvider) return;
+            void run("crank", async () => {
+              /// A locked position earns nothing on its own, so on devnet the crank first puts a
+              /// little volume on this pool: the fees that leaves behind are what the crank sweeps in
+              /// and the harvest then pays out. A wallet that cannot add volume — one that did not
+              /// open this pool — still gets its crank; the failure is reported, not blocking.
+              if (canAddVolume) {
+                try {
+                  const warmed = await warmPool(activeProvider, vault, VAULT_CLUSTER);
+                  setNote(
+                    `Added devnet volume first (${warmed.amountIn} base units traded), so this crank sweeps real fees — now click Harvest fees.`,
+                  );
+                } catch (cause) {
+                  setNote(`No volume was added: ${humanError(cause, "Adding volume")}`);
+                }
+              }
+              return crankClaim(activeProvider, vault, VAULT_CLUSTER);
+            });
           }}
           className={BUTTON}
         >
@@ -160,6 +186,17 @@ export function VaultActions({ vault }: { vault: string }) {
         Force exit releases your shares without claiming fees. Use it if a fee mint is paused or
         blocked; have another wallet crank, then harvest, to collect what is owed.
       </p>
+
+      {canAddVolume ? (
+        <p className="text-xs text-muted">
+          Crank claim also trades a little of this pool&apos;s own token on devnet first, so the
+          crank has fees to sweep and Harvest fees has something to pay — a locked position earns
+          nothing until its pool is traded. That costs this wallet a little devnet SOL and some of
+          its own token.
+        </p>
+      ) : null}
+
+      {note ? <p className="text-sm text-muted">{note}</p> : null}
 
       {busy ? (
         <p className="flex items-center gap-2 text-sm text-muted">

@@ -242,8 +242,8 @@ export default function SecuritizePage() {
       ) : null}
 
       <Section
-        title="Positions found"
-        description="Only a position that is permanently locked can back shares."
+        title="Positions held by this wallet"
+        description="Only a position that is permanently locked can back shares. Once a position is securitized its vault holds it, so it stops being one of this wallet's."
       >
         {positions.isPending && target ? (
           <p className="flex items-center gap-2 text-sm text-muted">

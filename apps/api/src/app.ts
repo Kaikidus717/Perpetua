@@ -37,6 +37,7 @@ import {
   buildStake,
   buildUnstake,
   buildUnstakeNoClaim,
+  buildWarmPool,
   listDlmmPresets,
   readonlyProvider,
 } from "./tx.js";
@@ -573,6 +574,37 @@ export function createApp(deps: AppDeps): Hono {
     payer: pubkey,
     mint: pubkey,
     decimals: z.coerce.number().int().min(0).max(9),
+  });
+
+  const warmPoolBody = z.object({
+    owner: pubkey,
+    vault: pubkey,
+    tokens: z.coerce.number().positive().max(10_000).optional(),
+  });
+
+  /// Devnet only. A locked position earns from swaps, so a demo with no trading has nothing to crank
+  /// or harvest — this gives the pool some volume without a second wallet. It is deliberately not a
+  /// mainnet route: there, the fees a share stands for must come from other people's trading.
+  app.post("/v1/tx/warm-pool", async (c) => {
+    const connection = connectionFor(deps, c.req.query("cluster"));
+    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (clusterFor(deps, c.req.query("cluster")) !== "devnet") {
+      return c.json(
+        {
+          error:
+            "adding trading volume is a devnet demo helper and is switched off on mainnet — the fees a share is paid must come from real trading there",
+        },
+        400,
+      );
+    }
+    const parsed = warmPoolBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    try {
+      return c.json(await buildWarmPool(connection, parsed.data));
+    } catch (error) {
+      const { status, message } = chainError(error);
+      return c.json({ error: message }, status);
+    }
   });
 
   app.post("/v1/tx/create-mint", async (c) => {

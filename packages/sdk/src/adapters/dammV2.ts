@@ -24,6 +24,7 @@ import {
   createMintToInstruction,
   getAssociatedTokenAddressSync,
   getMinimumBalanceForRentExemptMint,
+  getMint,
 } from "@solana/spl-token";
 import {
   type Connection,
@@ -91,6 +92,25 @@ function rowAddress(row: PositionRow): PublicKey {
   return row instanceof PublicKey ? row : row.position;
 }
 
+export interface VolumeSwapParams {
+  /// Wallet that pays and trades. It signs in the browser; nothing is signed here.
+  owner: string;
+  pool: string;
+  tokenAMint: string;
+  tokenBMint: string;
+  /// Whole tokens of token A to trade. Small on purpose: the fee it leaves behind is the point.
+  tokens?: number;
+}
+
+export interface VolumeSwapResult {
+  pool: string;
+  swap: Transaction;
+  /// Instructions that give a wallet holding none of token A something to trade, when it still has the
+  /// mint authority. `null` once the wallet already has some.
+  fuel: Transaction | null;
+  amountIn: string;
+}
+
 export class DammV2Adapter {
   readonly cpAmm: CpAmm;
 
@@ -118,6 +138,72 @@ export class DammV2Adapter {
 
   async fetchPool(address: PublicKey): Promise<PoolState> {
     return this.cpAmm.fetchPoolState(address);
+  }
+
+  /// Builds an ordinary swap on this pool — token A in, token B out — plus, when the wallet still holds
+  /// the pool token's mint authority and has nothing to trade, the instructions that give it some.
+  ///
+  /// A locked position only ever earns from swaps, so a pool nobody trades can never pay a share
+  /// holder: this is what lets a devnet demo show a crank and a harvest with real numbers in them,
+  /// without a second wallet or a faucet. Two transactions come back because the fuel and the swap
+  /// together do not fit one 1232-byte packet, and `fuel` is null once the wallet has some.
+  async buildVolumeSwap(params: VolumeSwapParams): Promise<VolumeSwapResult> {
+    const payer = new PublicKey(params.owner);
+    const pool = new PublicKey(params.pool);
+    const tokenA = new PublicKey(params.tokenAMint);
+    const tokenB = new PublicKey(params.tokenBMint);
+    const state = await this.fetchPool(pool);
+
+    /// The pool's tokens are plain SPL mints (created by the wallet that opened the pool), so the
+    /// classic token program is the right one for both the mint lookup and the swap.
+    const decimals = (await getMint(this.connection, tokenA, "confirmed", TOKEN_PROGRAM_ID))
+      .decimals;
+    const amountIn = new BN(params.tokens ?? 10).mul(new BN(10).pow(new BN(decimals)));
+    const account = getAssociatedTokenAddressSync(tokenA, payer, false, TOKEN_PROGRAM_ID);
+    const held = await this.connection
+      .getTokenAccountBalance(account)
+      .then((balance) => BigInt(balance.value.amount))
+      .catch(() => 0n);
+
+    let fuel: Transaction | null = null;
+    if (held < BigInt(amountIn.toString())) {
+      const authority = (await getMint(this.connection, tokenA, "confirmed", TOKEN_PROGRAM_ID))
+        .mintAuthority;
+      if (authority?.equals(payer)) {
+        /// Mint enough for several rounds of volume, so only the first click carries two signatures.
+        const fuelAmount = BigInt(amountIn.toString()) * 10n;
+        fuel = new Transaction()
+          .add(
+            createAssociatedTokenAccountIdempotentInstruction(
+              payer,
+              account,
+              payer,
+              tokenA,
+              TOKEN_PROGRAM_ID,
+            ),
+          )
+          .add(createMintToInstruction(tokenA, account, payer, fuelAmount, [], TOKEN_PROGRAM_ID));
+      }
+    }
+
+    const swap = await this.cpAmm.swap({
+      payer,
+      pool,
+      inputTokenMint: tokenA,
+      outputTokenMint: tokenB,
+      amountIn,
+      /// A demo trade against your own pool: the point is the fee it leaves behind, not the price.
+      minimumAmountOut: new BN(0),
+      tokenAMint: tokenA,
+      tokenBMint: tokenB,
+      tokenAVault: state.tokenAVault,
+      tokenBVault: state.tokenBVault,
+      tokenAProgram: TOKEN_PROGRAM_ID,
+      tokenBProgram: TOKEN_PROGRAM_ID,
+      referralTokenAccount: null,
+    });
+
+    return { pool: pool.toBase58(), swap, fuel, amountIn: amountIn.toString() };
   }
 
   async positionDetail(address: PublicKey): Promise<PositionDetail> {

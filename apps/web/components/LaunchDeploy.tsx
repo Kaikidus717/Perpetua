@@ -26,8 +26,10 @@ export interface LaunchDeployProps {
   partnerLiquidityPct: number;
   lockedPct: number;
   /// The network the token and its pool are created on. Meteora's DBC and DAMM v2 programs run on
-  /// devnet and mainnet both, so a creator with a mainnet wallet launches on mainnet.
-  cluster: string;
+  /// devnet and mainnet both, so a creator with a mainnet wallet launches on mainnet. `null` while
+  /// the wallet's network is still being read: a transaction built for one network cannot be signed
+  /// by a wallet sitting on the other, so the button waits rather than guessing.
+  cluster: string | null;
 }
 
 /// A ticker guess from the name, so nobody has to type one.
@@ -70,7 +72,9 @@ export function LaunchDeploy({
   /// on one network and a choice of the other is worth saying out loud before anyone signs anything.
   /// Shared with the header badge through `lib/network`, so the two cannot contradict each other.
   const network = useWalletNetwork(wallet.address);
-  const mismatched = Boolean(network.cluster && network.cluster !== cluster);
+  const mismatched = Boolean(network.cluster && cluster && network.cluster !== cluster);
+  /// The wallet's network is not known yet — nothing here can be signed until it is.
+  const unresolved = !cluster;
 
   /// The metadata document is built here and served by this app: the fields above become a URL, and
   /// that URL is what the pool stores on-chain. Nobody has to go and publish a JSON file first. A
@@ -115,7 +119,11 @@ export function LaunchDeploy({
   }
 
   function deploy() {
-    if (!provider || uriTooLong || !filled) return;
+    /// The network is checked here as well as on the button, since this is what the transaction is
+    /// built for — building for a network the wallet is not on is exactly how a launch dies inside a
+    /// wallet with nothing useful to say. `target` is the narrowed, known network.
+    if (!provider || !cluster || uriTooLong || !filled) return;
+    const target = cluster;
     void run("Deploy the launch", async () => {
       /// The token is created *by* this transaction, not before it. DBC's pool-creation instruction
       /// allocates the base mint account itself, so a mint that already exists makes the launch fail
@@ -136,13 +144,13 @@ export function LaunchDeploy({
           creatorPermanentLockedLiquidityPercentage: lockedPct,
           partnerPermanentLockedLiquidityPercentage: 0,
         },
-        cluster,
+        target,
         mintKeypair,
       );
       setMint(mintKeypair.publicKey.toBase58());
       setLaunch(result);
       setMessage(
-        `Launched on ${networkLabel(cluster)}: the token, its metadata and the pool were created in one transaction.`,
+        `Launched on ${networkLabel(target)}: the token, its metadata and the pool were created in one transaction.`,
       );
     });
   }
@@ -150,8 +158,15 @@ export function LaunchDeploy({
   return (
     <section className={`${CARD} space-y-4 p-5`}>
       <h2 className="text-base font-semibold text-ink">
-        Deploy this launch on {networkLabel(cluster)}
+        {cluster ? `Deploy this launch on ${networkLabel(cluster)}` : "Deploy this launch"}
       </h2>
+
+      {unresolved ? (
+        <p className="text-xs text-muted">
+          Reading which network your wallet is on. A launch is built for one network and can only be
+          signed by a wallet switched to it, so this waits for the answer rather than guessing.
+        </p>
+      ) : null}
 
       {mismatched ? (
         <p className="text-xs text-warn">
@@ -265,7 +280,7 @@ export function LaunchDeploy({
         <button
           type="button"
           onClick={deploy}
-          disabled={!ready || busy !== null || !filled || uriTooLong}
+          disabled={!ready || busy !== null || !filled || uriTooLong || unresolved || mismatched}
           className={BUTTON_PRIMARY}
         >
           {busy === "Deploy the launch" ? "Waiting for signature…" : "Deploy the launch"}

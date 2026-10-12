@@ -18,10 +18,36 @@ import { useState } from "react";
 /// named explicitly so they stay correct when the deploy's default cluster is mainnet.
 const VAULT_CLUSTER = "devnet";
 
+/// Which price the ladder is built around, and how it was arrived at. This is the decision the fee
+/// history dead end turned on, so it is a plain function: a settled failure has to read as "typed",
+/// never as "reading". Meteora's pricing service covers mainnet only, so a devnet pool fails for good,
+/// and treating that failure as "still loading" is what left this card spinning forever with the
+/// market impossible to create.
+export function priceBasis(
+  fairValue: number | undefined,
+  settled: { isError: boolean; isFetched: boolean },
+  typed: string,
+): { price: number | undefined; basis: "computed" | "typed" | "reading" } {
+  const manual = Number(typed.trim());
+  const usable = Number.isFinite(manual) && manual > 0;
+  if (typeof fairValue === "number") return { price: fairValue, basis: "computed" };
+  /// `isFetched` is true once the request has settled either way, so a failure that carries no value
+  /// still counts as answered — the only state that stays "reading" is one that has never come back.
+  if (settled.isError || settled.isFetched)
+    return { price: usable ? manual : undefined, basis: "typed" };
+  return { price: undefined, basis: "reading" };
+}
+
 export function SellShares({ shareMint, pool }: { shareMint: string; pool: string }) {
   const wallet = useSolanaWallet();
   const [quoteMint, setQuoteMint] = useState<string>(QUOTE_TOKENS[0].mint);
   const [presetIndex, setPresetIndex] = useState(0);
+  /// The price per share the ladder is built around. Ideally that is the pool's computed fair value,
+  /// but Meteora's fee-history service covers mainnet only — so a devnet pool can never be priced by
+  /// it, and this card used to wait for a valuation that was never coming: the spinner ran forever
+  /// and "Create the market" stayed disabled because the price it needed never arrived. When there is
+  /// no computed value, the creator sets the opening price explicitly instead.
+  const [manualPrice, setManualPrice] = useState("1");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [market, setMarket] = useState<{
@@ -39,10 +65,11 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
     queryFn: () => api.valuation(pool),
   });
   const fairValue = valuation.data?.valuation.fairValuePerShareUsd;
+  const { price, basis } = priceBasis(fairValue, valuation, manualPrice);
   const plan = useQuery({
-    queryKey: ["sale-plan", fairValue],
-    queryFn: () => api.ladder(fairValue ?? 0),
-    enabled: Boolean(fairValue),
+    queryKey: ["sale-plan", price],
+    queryFn: () => api.ladder(price ?? 0),
+    enabled: Boolean(price),
   });
 
   /// The share token these transactions move lives on devnet, so a mainnet wallet cannot sign for it.
@@ -67,7 +94,8 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
   }
 
   function createMarket() {
-    if (!provider || !preset || !fairValue) return;
+    if (!provider || !preset || !price) return;
+    const opening = price;
     void run("Create the market", async () => {
       const result = await openSale(
         provider,
@@ -77,7 +105,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
           presetParameter: preset.address,
           binStep: preset.binStep,
           baseFactor: preset.baseFactor,
-          initialPrice: fairValue,
+          initialPrice: opening,
         },
         VAULT_CLUSTER,
       );
@@ -158,11 +186,42 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         ) : null}
       </label>
 
-      {valuation.data ? (
+      {basis === "reading" ? (
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Spinner label="Reading the pool's fee history" />
+          Reading the pool&apos;s fee history…
+        </p>
+      ) : null}
+
+      {basis === "typed" ? (
+        <div className={`${CARD_MUTED} space-y-2 p-3 text-sm`}>
+          <p className="text-warn">
+            This pool has no fee history to price from
+            {valuation.isError
+              ? ` — ${valuation.error instanceof Error ? valuation.error.message : "the pricing service could not answer"}`
+              : ""}
+            . Meteora&apos;s fee-history service covers mainnet, so a pool on devnet never has one.
+            Set the opening price yourself below and the ladder is built around it.
+          </p>
+          <label className="flex flex-wrap items-center gap-2">
+            <span className="text-muted">Opening price per share (USD)</span>
+            <input
+              value={manualPrice}
+              onChange={(event) => setManualPrice(event.target.value)}
+              inputMode="decimal"
+              className={`${INPUT} w-28`}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {price ? (
         <div className={`${CARD_MUTED} grid grid-cols-3 gap-3 p-3 text-sm`}>
           <div>
-            <div className="text-xs text-muted">Fair value / share</div>
-            <div className="tnum text-ink">{usd(fairValue, 6)}</div>
+            <div className="text-xs text-muted">
+              {basis === "computed" ? "Fair value / share" : "Opening price / share"}
+            </div>
+            <div className="tnum text-ink">{usd(price, 6)}</div>
           </div>
           <div>
             <div className="text-xs text-muted">Ask range</div>
@@ -177,18 +236,13 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
             <div className="tnum text-ink">{plan.data?.plan.totalOfferShares ?? "…"}</div>
           </div>
         </div>
-      ) : (
-        <p className="flex items-center gap-2 text-sm text-muted">
-          <Spinner label="Reading the pool's fee history" />
-          Reading the pool&apos;s fee history…
-        </p>
-      )}
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={createMarket}
-          disabled={!ready || busy !== null || !preset || !fairValue || wrongNetwork}
+          disabled={!ready || busy !== null || !preset || !price || wrongNetwork}
           className={BUTTON_PRIMARY}
         >
           {busy === "Create the market" ? "Waiting for signature…" : "Create the market"}

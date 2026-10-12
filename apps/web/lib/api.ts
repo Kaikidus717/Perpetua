@@ -139,8 +139,22 @@ async function get<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBase()}${path}`, {
     headers: { accept: "application/json" },
   });
-  if (!response.ok) throw new ApiError(response.status);
+  if (!response.ok) throw new ApiError(response.status, await errorSentence(response));
   return (await response.json()) as T;
+}
+
+/// The API words its failures for the page that asked — "Meteora's data service has no fee history for
+/// that address, so the pool cannot be priced…" — and that sentence is worth more than the status
+/// code, which cannot say which of "wrong address" and "devnet pool" a 404 is. Read it when it is
+/// there; fall back to the status when it is not.
+async function errorSentence(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    if (typeof body?.error === "string" && body.error.trim()) return body.error;
+  } catch {
+    // A body that is not JSON says nothing extra; the status still does.
+  }
+  return undefined;
 }
 
 /// A failed request that keeps its status code, so a page can tell "that address is not a pool"
@@ -149,8 +163,8 @@ async function get<T>(path: string): Promise<T> {
 export class ApiError extends Error {
   readonly status: number;
 
-  constructor(status: number) {
-    super(`request failed: ${status}`);
+  constructor(status: number, detail?: string) {
+    super(detail ?? `request failed: ${status}`);
     this.name = "ApiError";
     this.status = status;
   }

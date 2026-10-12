@@ -64,8 +64,12 @@ export default function LaunchPage() {
   /// The buttons below stay as an override for the case where you know better, and a mismatch is
   /// called out instead of being left to fail at the wallet.
   const [override, setOverride] = useState<"devnet" | "mainnet-beta" | null>(null);
-  const cluster = override ?? network.cluster ?? "mainnet-beta";
-  const mismatched = Boolean(network.cluster && network.cluster !== cluster);
+  /// Unknown stays unknown. This used to fall back to mainnet, which builds a *mainnet* transaction
+  /// for a wallet whose network has not been read yet — and a wallet switched to devnet cannot sign
+  /// that, so Phantom answers "Unexpected error" and the launch looks broken. The deploy below waits
+  /// for the answer instead of guessing at it.
+  const cluster = override ?? network.cluster ?? null;
+  const mismatched = Boolean(network.cluster && cluster && network.cluster !== cluster);
 
   const preset = useQuery({ queryKey: ["preset", form], queryFn: () => api.preset(form) });
 

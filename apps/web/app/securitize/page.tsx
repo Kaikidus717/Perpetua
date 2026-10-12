@@ -12,6 +12,7 @@ import { networkLabel } from "@/lib/network";
 import { type SecuritizeResult, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT_MONO, LINK, PAGE } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { SHARE_SUPPLY } from "@perpetua/shared";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
@@ -39,6 +40,26 @@ export default function SecuritizePage() {
   });
 
   const position = positions.data?.positions[0];
+
+  /// The same wallet's *vaults* — the other half of the picture, and the half this page used to miss.
+  /// Turning a position into shares hands that position to a vault, so it stops belonging to the
+  /// wallet and stops appearing in the scan above. A wallet that has securitized everything therefore
+  /// looks empty here, and the page answered that with "No locked position yet?" — as if the vault it
+  /// had just created never happened. Asking for its vaults says what actually exists.
+  const vaults = useQuery({ queryKey: ["vaults"], queryFn: () => api.vaults() });
+  const mine = (vaults.data?.vaults ?? []).filter(
+    (entry) => Boolean(wallet.address) && entry.creator === wallet.address,
+  );
+
+  /// Base units to whole shares. The vault mints `SHARE_SUPPLY` = 1,000,000 × 10^6, so the staked
+  /// amount and the supply are both in those 6-decimal units.
+  function wholeShares(base: string): number {
+    try {
+      return Number((BigInt(base) * 1_000_000n) / SHARE_SUPPLY);
+    } catch {
+      return 0;
+    }
+  }
   const valuation = useQuery({
     queryKey: ["valuation", position?.pool],
     queryFn: () =>
@@ -66,26 +87,29 @@ export default function SecuritizePage() {
     setBusy(true);
     setTxError(null);
     try {
-      setResult(
-        await securitize(
-          detected,
-          {
-            pool: position.pool,
-            position: position.address,
-            positionNftMint: position.nftMint,
-            positionNftAccount: position.nftAccount,
-            positionNftProgram: position.positionNftProgram,
-            tokenAMint: position.tokenAMint,
-            tokenBMint: position.tokenBMint,
-            tokenAProgram: position.tokenAProgram,
-            tokenBProgram: position.tokenBProgram,
-          },
-          /// The vault program is deployed on devnet, so this is a devnet transaction whatever the
-          /// deploy's default cluster is. A mainnet wallet is told why it cannot take this step,
-          /// rather than being handed a transaction that cannot succeed.
-          cluster ?? "devnet",
-        ),
+      const created = await securitize(
+        detected,
+        {
+          pool: position.pool,
+          position: position.address,
+          positionNftMint: position.nftMint,
+          positionNftAccount: position.nftAccount,
+          positionNftProgram: position.positionNftProgram,
+          tokenAMint: position.tokenAMint,
+          tokenBMint: position.tokenBMint,
+          tokenAProgram: position.tokenAProgram,
+          tokenBProgram: position.tokenBProgram,
+        },
+        /// The vault program is deployed on devnet, so this is a devnet transaction whatever the
+        /// deploy's default cluster is. A mainnet wallet is told why it cannot take this step,
+        /// rather than being handed a transaction that cannot succeed.
+        cluster ?? "devnet",
       );
+      setResult(created);
+      /// That position has just left this wallet and joined a vault, so both lists below are stale:
+      /// the scan no longer contains it, and the vault list does not have it yet.
+      void positions.refetch();
+      void vaults.refetch();
     } catch (cause) {
       setTxError(humanError(cause, "Creating the shares"));
     } finally {
@@ -168,6 +192,29 @@ export default function SecuritizePage() {
             same wallet software, and your mainnet funds are untouched by a devnet transaction.
           </p>
         </div>
+      ) : null}
+
+      {mine.length > 0 ? (
+        <Section
+          title="Already turned into shares"
+          description="A securitized position belongs to its vault, not to the wallet — which is why it does not show up in the scan below."
+        >
+          <div className={`${CARD} divide-y divide-line`}>
+            {mine.map((entry) => (
+              <div
+                key={entry.address}
+                className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm"
+              >
+                <Link href={`/vault/${entry.address}`} className={`font-mono text-xs ${LINK}`}>
+                  {shortAddress(entry.address)} ↗
+                </Link>
+                <span className="text-muted">
+                  {wholeShares(entry.totalStaked)} of 1,000,000 shares staked
+                </span>
+              </div>
+            ))}
+          </div>
+        </Section>
       ) : null}
 
       <Section

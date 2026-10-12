@@ -66,19 +66,66 @@ function method<K extends "signAndSendTransaction" | "signTransaction">(
   }
 }
 
+/// The prefix this file puts on a transaction the cluster itself refused, so that a refusal raised
+/// here is never mistaken for an unreachable RPC in the catch below.
+const CLUSTER_REFUSED = "the chain refused this transaction";
+
+/// Simulates the transaction against the cluster it was built for *before* any wallet is asked to
+/// sign it. A wallet extension can only report a failure that happens inside it — Phantom's words are
+/// "Unexpected error" — so the one place that can name the real cause is the cluster, which answers
+/// with the program's own logs. A simulation that cannot be *reached* (the RPC is down, rate-limited)
+/// says nothing about the transaction, so it is skipped rather than reported as a failure.
+async function preflight(transaction: Transaction, cluster?: string): Promise<void> {
+  try {
+    const connection = new Connection(rpcUrl(cluster), "confirmed");
+    const simulation = await connection.simulateTransaction(transaction);
+    if (simulation.value.err) {
+      const logs = (simulation.value.logs ?? []).filter(Boolean).slice(-3).join(" · ");
+      throw new Error(
+        `${CLUSTER_REFUSED} (${JSON.stringify(simulation.value.err)})${logs ? `: ${logs}` : ""}`,
+      );
+    }
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.startsWith(CLUSTER_REFUSED)) throw cause;
+  }
+}
+
+/// What to say when a wallet will not sign a transaction the cluster accepts. That combination has
+/// one common cause: the wallet is switched to a different network, so a devnet transaction dies
+/// inside an extension sitting on mainnet, reported as a generic failure. Naming the network and the
+/// three clicks that change it is the difference between a dead end and a fix. A plain rejection is
+/// passed through untouched — "the user rejected the request" is an answer, not a puzzle.
+function refusal(cause: unknown, cluster?: string): unknown {
+  const text = cause instanceof Error ? cause.message : String(cause ?? "no reason given");
+  if (/reject|denied|cancel|declin|refus/i.test(text)) return cause;
+  return new Error(
+    `your wallet would not sign this ${cluster ?? "devnet"} transaction (${text}). It is valid on that network — the cluster accepted a simulation of it — so the usual cause is the wallet being switched to another network. In Phantom: Settings → Developer Settings → Change Network → Devnet, then reload this page.`,
+  );
+}
+
 async function send(
   provider: SolanaProvider,
   transaction: Transaction,
   cluster?: string,
 ): Promise<string> {
+  await preflight(transaction, cluster);
   const signAndSend = method(provider, "signAndSendTransaction");
   if (signAndSend) {
-    const result = await signAndSend.call(provider, transaction);
-    return result.signature;
+    try {
+      const result = await signAndSend.call(provider, transaction);
+      return result.signature;
+    } catch (cause) {
+      throw refusal(cause, cluster);
+    }
   }
   const signOnly = method(provider, "signTransaction");
   if (signOnly) {
-    const signed = await signOnly.call(provider, transaction);
+    let signed: Transaction;
+    try {
+      signed = await signOnly.call(provider, transaction);
+    } catch (cause) {
+      throw refusal(cause, cluster);
+    }
     const connection = new Connection(rpcUrl(cluster), "confirmed");
     return connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
   }

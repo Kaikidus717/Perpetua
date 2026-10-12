@@ -787,7 +787,16 @@ function priceError(error: unknown): { status: 404 | 422 | 502; body: { error: s
   if (error instanceof NoHistoryError) return { status: 422, body: { error: error.message } };
   const message = dataApiError(error);
   if (/failed with 404/.test(message)) {
-    return { status: 404, body: { error: "no Meteora pool at that address" } };
+    return {
+      status: 404,
+      body: {
+        /// A devnet pool is the common case here, and it is *not* a bad address: Meteora's data
+        /// service covers mainnet only. Saying which of the two it is stops a devnet vault's pool
+        /// from reading as a typo.
+        error:
+          "Meteora's data service has no fee history for that address, so the pool cannot be priced. It is either not a Meteora pool, or it is a devnet pool — the data service covers mainnet only.",
+      },
+    };
   }
   return { status: 502, body: { error: message } };
 }

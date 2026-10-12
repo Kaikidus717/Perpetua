@@ -90,6 +90,49 @@ async function preflight(transaction: Transaction, cluster?: string): Promise<vo
   }
 }
 
+/// A failure that means the transaction's stamp went stale before anyone signed it. That is the one
+/// failure a retry actually cures, and the reason a first click can look like it did nothing.
+function expired(detail: string): boolean {
+  return /blockhash not found|block height exceeded|has expired|TransactionExpired|BlockhashNotFound|was not found/i.test(
+    detail,
+  );
+}
+
+/// Nobody has signed yet, so the stamp can be replaced without breaking anything. A partially signed
+/// transaction — a launch, a locked position — cannot be re-stamped: the signatures already on it
+/// cover the old stamp.
+function untouched(transaction: Transaction): boolean {
+  return transaction.signatures.every((entry) => entry.signature === null);
+}
+
+/// Replaces the freshness stamp with one from the browser's own view of the cluster. The instructions
+/// and the accounts are untouched: only the stamp that says "this is still recent" changes.
+async function restamp(transaction: Transaction, cluster?: string): Promise<void> {
+  const connection = new Connection(rpcUrl(cluster), "confirmed");
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  transaction.recentBlockhash = blockhash;
+}
+
+/// Hand the transaction to the wallet and return the signature it reports.
+async function broadcast(
+  provider: SolanaProvider,
+  transaction: Transaction,
+  cluster?: string,
+): Promise<string> {
+  const signAndSend = method(provider, "signAndSendTransaction");
+  if (signAndSend) {
+    const result = await signAndSend.call(provider, transaction);
+    return result.signature;
+  }
+  const signOnly = method(provider, "signTransaction");
+  if (signOnly) {
+    const signed = await signOnly.call(provider, transaction);
+    const connection = new Connection(rpcUrl(cluster), "confirmed");
+    return connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+  }
+  throw new Error("wallet cannot sign transactions");
+}
+
 /// What to say when a wallet will not sign a transaction the cluster accepts. That combination has
 /// one common cause: the wallet is switched to a different network, so a devnet transaction dies
 /// inside an extension sitting on mainnet, reported as a generic failure. Naming the network and the
@@ -98,6 +141,13 @@ async function preflight(transaction: Transaction, cluster?: string): Promise<vo
 function refusal(cause: unknown, cluster?: string): unknown {
   const text = cause instanceof Error ? cause.message : String(cause ?? "no reason given");
   if (/reject|denied|cancel|declin|refus/i.test(text)) return cause;
+  /// An expiring stamp is not the wallet's fault, and pointing at network settings cannot help: it
+  /// just needs another click, and the page builds a fresh transaction each time.
+  if (expired(text)) {
+    return new Error(
+      `that request expired before it was signed (${text}). Nothing was sent — try once more and it will build a fresh one.`,
+    );
+  }
   return new Error(
     `your wallet would not sign this ${cluster ?? "devnet"} transaction (${text}). It is valid on that network — the cluster accepted a simulation of it — so the usual cause is the wallet being switched to another network. In Phantom: Settings → Developer Settings → Change Network → Devnet, then reload this page.`,
   );
@@ -109,27 +159,25 @@ async function send(
   cluster?: string,
 ): Promise<string> {
   await preflight(transaction, cluster);
-  const signAndSend = method(provider, "signAndSendTransaction");
-  if (signAndSend) {
-    try {
-      const result = await signAndSend.call(provider, transaction);
-      return result.signature;
-    } catch (cause) {
-      throw refusal(cause, cluster);
+  try {
+    return await broadcast(provider, transaction, cluster);
+  } catch (cause) {
+    const text = cause instanceof Error ? cause.message : String(cause ?? "");
+    /// A transaction nobody has signed yet, refused only because its stamp went stale, is re-offered
+    /// with a fresh stamp: that is what turns "the first click did nothing" into one click, and why
+    /// clicking twice used to be the workaround. A partially signed one cannot be re-stamped, so it is
+    /// reported as expired and the reader is told to click once more.
+    if (expired(text) && untouched(transaction)) {
+      try {
+        await restamp(transaction, cluster);
+        await preflight(transaction, cluster);
+        return await broadcast(provider, transaction, cluster);
+      } catch (second) {
+        throw refusal(second, cluster);
+      }
     }
+    throw refusal(cause, cluster);
   }
-  const signOnly = method(provider, "signTransaction");
-  if (signOnly) {
-    let signed: Transaction;
-    try {
-      signed = await signOnly.call(provider, transaction);
-    } catch (cause) {
-      throw refusal(cause, cluster);
-    }
-    const connection = new Connection(rpcUrl(cluster), "confirmed");
-    return connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-  }
-  throw new Error("wallet cannot sign transactions");
 }
 
 function requirePublicKey(provider: SolanaProvider): string {

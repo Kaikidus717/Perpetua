@@ -18,6 +18,12 @@ import { useState } from "react";
 /// named explicitly so they stay correct when the deploy's default cluster is mainnet.
 const VAULT_CLUSTER = "devnet";
 
+/// The API's own words behind a failed call, when it sent any. Used to show a reason that the card
+/// cannot already explain by itself — the fee-history case is explained in full, so it is not echoed.
+function detail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? "");
+}
+
 /// Which price the ladder is built around, and how it was arrived at. This is the decision the fee
 /// history dead end turned on, so it is a plain function: a settled failure has to read as "typed",
 /// never as "reading". Meteora's pricing service covers mainnet only, so a devnet pool fails for good,
@@ -199,13 +205,13 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
       {basis === "typed" ? (
         <div className={`${CARD_MUTED} space-y-2 p-3 text-sm`}>
           <p className="text-warn">
-            This pool has no fee history to price from
-            {valuation.isError
-              ? ` — ${valuation.error instanceof Error ? valuation.error.message : "the pricing service could not answer"}`
-              : ""}
-            . Meteora&apos;s fee-history service covers mainnet, so a pool on devnet never has one.
-            Set the opening price yourself below and the ladder is built around it.
+            This pool cannot be priced from Meteora&apos;s fee history, because that service covers
+            mainnet only — a pool on devnet never has one. Set the opening price per share yourself
+            below and the ladder is built around it.
           </p>
+          {valuation.isError && !/fee history/i.test(detail(valuation.error)) ? (
+            <p className="text-muted">{detail(valuation.error)}</p>
+          ) : null}
           <label className="flex flex-wrap items-center gap-2">
             <span className="text-muted">Opening price per share (USD)</span>
             <input

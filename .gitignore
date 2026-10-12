@@ -54,6 +54,8 @@ _*.mjs
 _*.cjs
 _*.js
 _*.mts
+_*.mtsx
+_*.tsx
 _*.py
 _*.sh
 _*.json

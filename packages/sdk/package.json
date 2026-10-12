@@ -62,6 +62,7 @@
     "test": "vitest run --passWithNoTests",
     "ops:create-vault": "tsx scripts/create-vault.ts",
     "ops:devnet-e2e": "tsx scripts/devnet-e2e.ts",
+    "ops:swap": "tsx scripts/swap-devnet.ts",
     "ops:probe": "tsx scripts/devnet-probe.ts",
     "ops:rpc": "tsx scripts/rpc-health.ts",
     "ops:verify-offsets": "tsx scripts/verify-position-offsets.ts",

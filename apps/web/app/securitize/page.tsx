@@ -6,7 +6,7 @@ import { Section } from "@/components/Section";
 import { Spinner } from "@/components/Spinner";
 import { Stat } from "@/components/Stat";
 import { api } from "@/lib/api";
-import { compactUsd, explorerUrl, shortAddress, txUrl, usd } from "@/lib/format";
+import { compactUsd, explorerCluster, explorerUrl, shortAddress, txUrl, usd } from "@/lib/format";
 import { humanError } from "@/lib/messages";
 import { networkLabel } from "@/lib/network";
 import { type SecuritizeResult, securitize } from "@/lib/tx";
@@ -58,6 +58,16 @@ export default function SecuritizePage() {
       return Number((BigInt(base) * 1_000_000n) / SHARE_SUPPLY);
     } catch {
       return 0;
+    }
+  }
+
+  /// What this vault has paid out across both fee tokens, as one number answering "has anything
+  /// happened here yet?" — zero means the pool has not traded since the last claim.
+  function harvestedTotal(baseA: string, baseB: string): bigint {
+    try {
+      return BigInt(baseA) + BigInt(baseB);
+    } catch {
+      return 0n;
     }
   }
   const valuation = useQuery({
@@ -201,16 +211,30 @@ export default function SecuritizePage() {
         >
           <div className={`${CARD} divide-y divide-line`}>
             {mine.map((entry) => (
-              <div
-                key={entry.address}
-                className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm"
-              >
-                <Link href={`/vault/${entry.address}`} className={`font-mono text-xs ${LINK}`}>
-                  {shortAddress(entry.address)} ↗
-                </Link>
-                <span className="text-muted">
-                  {wholeShares(entry.totalStaked)} of 1,000,000 shares staked
-                </span>
+              <div key={entry.address} className="space-y-1 p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link href={`/vault/${entry.address}`} className={`font-mono text-xs ${LINK}`}>
+                    {shortAddress(entry.address)} ↗
+                  </Link>
+                  <span className="text-muted">
+                    {wholeShares(entry.totalStaked)} of 1,000,000 shares staked
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                  <a
+                    href={explorerUrl(entry.position, explorerCluster(cluster))}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`font-mono ${LINK}`}
+                  >
+                    position {shortAddress(entry.position)} ↗
+                  </a>
+                  <span>
+                    {harvestedTotal(entry.totalClaimedA, entry.totalClaimedB) === 0n
+                      ? "nothing harvested yet — swap on the pool, then Crank claim and Harvest"
+                      : `harvested so far: ${entry.totalClaimedA} + ${entry.totalClaimedB} base units`}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -228,7 +252,11 @@ export default function SecuritizePage() {
           </p>
         ) : null}
         {positions.data && positions.data.positions.length === 0 ? (
-          <p className="text-sm text-muted">No locked positions found for this wallet.</p>
+          <p className="text-sm text-muted">
+            {mine.length > 0
+              ? `No positions left in this wallet — the ${mine.length === 1 ? "one you securitized is" : "ones you securitized are"} held by the vault${mine.length === 1 ? "" : "s"} above, which is what stops the fees from walking away. Create another position below whenever you want a second fee engine.`
+              : "No locked positions found for this wallet."}
+          </p>
         ) : null}
         {position ? (
           <div className={`${CARD} space-y-4 p-5`}>

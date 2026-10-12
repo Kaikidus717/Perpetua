@@ -5,15 +5,20 @@ import { metadataUri } from "@/lib/api";
 import { explorerCluster, explorerUrl, shortAddress, txUrl } from "@/lib/format";
 import { humanError } from "@/lib/messages";
 import { networkLabel, useWalletNetwork } from "@/lib/network";
-import { createBaseMint, deployLaunch } from "@/lib/tx";
-import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, INPUT_MONO, LINK } from "@/lib/ui";
+import { deployLaunch } from "@/lib/tx";
+import { BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, INPUT_MONO, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
-import type { Keypair } from "@solana/web3.js";
+import { Keypair } from "@solana/web3.js";
 import { useState } from "react";
 
-/// The API's launch route accepts a metadata link up to this long, so the form checks it here rather
-/// than letting a creator sign a transaction that is going to be rejected.
-const URI_LIMIT = 200;
+/// The launch carries the whole metadata link inside the transaction, and a Solana transaction can
+/// hold 1232 bytes in total. Measured against the real builder, the launch's own instructions cost
+/// about 1064 bytes before the link and the link is stored byte for byte, so the ceiling is roughly
+/// 165 characters for a short name and ticker — less once both are filled in. 140 is the honest limit
+/// that still leaves room for both, and it leaves the whole description-and-image budget of a normal
+/// launch. Anything longer has to be hosted by the creator and pasted into the "own metadata link" box
+/// below, which the form says.
+const URI_LIMIT = 140;
 
 export interface LaunchDeployProps {
   creatorTradingFeePct: number;
@@ -54,9 +59,6 @@ export function LaunchDeploy({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [mint, setMint] = useState<string | null>(null);
-  /// The base mint signs the launch as well as the config, so its keypair is kept from the moment the
-  /// token is created until the launch is deployed. Without it the transaction is one signature short.
-  const [mintKeypair, setMintKeypair] = useState<Keypair | null>(null);
   const [launch, setLaunch] = useState<{ config: string; pool: string; signature: string } | null>(
     null,
   );
@@ -112,23 +114,17 @@ export function LaunchDeploy({
     }
   }
 
-  function createToken() {
-    if (!provider) return;
-    void run("Create the token", async () => {
-      const result = await createBaseMint(provider, 6, cluster);
-      setMint(result.mint);
-      setMintKeypair(result.keypair);
-      setMessage("Token created.");
-    });
-  }
-
   function deploy() {
-    if (!provider || !mint || uriTooLong) return;
+    if (!provider || uriTooLong || !filled) return;
     void run("Deploy the launch", async () => {
+      /// The token is created *by* this transaction, not before it. DBC's pool-creation instruction
+      /// allocates the base mint account itself, so a mint that already exists makes the launch fail
+      /// on-chain with "Allocate … already in use". A fresh keypair here signs alongside the wallet.
+      const mintKeypair = Keypair.generate();
       const result = await deployLaunch(
         provider,
         {
-          baseMint: mint,
+          baseMint: mintKeypair.publicKey.toBase58(),
           quoteMint,
           name,
           symbol,
@@ -141,10 +137,13 @@ export function LaunchDeploy({
           partnerPermanentLockedLiquidityPercentage: 0,
         },
         cluster,
-        mintKeypair ?? undefined,
+        mintKeypair,
       );
+      setMint(mintKeypair.publicKey.toBase58());
       setLaunch(result);
-      setMessage(`Launch deployed on ${networkLabel(cluster)}.`);
+      setMessage(
+        `Launched on ${networkLabel(cluster)}: the token, its metadata and the pool were created in one transaction.`,
+      );
     });
   }
 
@@ -265,21 +264,19 @@ export function LaunchDeploy({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={createToken}
-          disabled={!ready || busy !== null}
-          className={BUTTON_PRIMARY}
-        >
-          {busy === "Create the token" ? "Waiting for signature…" : "Create the token"}
-        </button>
-        <button
-          type="button"
           onClick={deploy}
-          disabled={!ready || busy !== null || !mintKeypair || !filled || uriTooLong}
-          className={BUTTON}
+          disabled={!ready || busy !== null || !filled || uriTooLong}
+          className={BUTTON_PRIMARY}
         >
           {busy === "Deploy the launch" ? "Waiting for signature…" : "Deploy the launch"}
         </button>
       </div>
+
+      <p className="text-xs text-muted">
+        One signature creates the token, its metadata and the bonding-curve pool together. Meteora
+        charges a pool-creation fee of about 1 SOL for that, which the fee claimer (you) can claim
+        back later, so this wallet needs a little over 1 SOL before the launch will go through.
+      </p>
 
       {!filled && !launch ? (
         <p className="text-xs text-muted">

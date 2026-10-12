@@ -29,8 +29,11 @@ Program ids used across the repo:
 - `apps/api` exposes it at `GET /v1/dbc/preset`.
 - `packages/sdk/src/adapters/dbc.ts` (`DbcAdapter.buildLaunch`) builds the unsigned
   `partner.createConfigAndPool` transaction — the config and its pool in one instruction set.
-  `apps/api` exposes it at `POST /v1/tx/launch`, and `POST /v1/tx/create-mint` builds the base mint
-  the launch needs.
+  `apps/api` exposes it at `POST /v1/tx/launch`. **The launcher creates the base mint itself**
+  (DBC's `initialize_virtual_pool_with_spl_token` allocates the mint account), so the launch takes a
+  fresh mint keypair that signs alongside the creator's wallet — a token created beforehand makes the
+  launch fail on-chain with `Allocate … already in use`. `POST /v1/tx/create-mint` builds a bare mint
+  for other uses, and a launch refuses an address that already exists.
 
 ### DLMM
 

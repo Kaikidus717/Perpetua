@@ -38,9 +38,13 @@ async function post<T>(path: string, body: unknown, cluster?: string): Promise<T
   });
   const payload = (await response.json().catch(() => null)) as T | { error?: unknown } | null;
   if (!response.ok) {
+    // The API's error is a sentence written for this page ("this wallet has no shares staked…"), so it
+    // is passed through as-is rather than JSON-encoded into a wall of escaped quotes.
     const detail =
       payload && typeof payload === "object" && "error" in payload
-        ? JSON.stringify(payload.error)
+        ? typeof payload.error === "string"
+          ? payload.error
+          : JSON.stringify(payload.error)
         : `request failed: ${response.status}`;
     throw new Error(detail);
   }
@@ -202,8 +206,13 @@ export interface SalePreset {
 
 /// Creates the SPL mint a launch needs. The mint keypair is generated here, signs, and its public
 /// key is returned so the launch can reference it.
-/// Mints the base token a launch needs. `cluster` decides which network it is minted on, so a creator
-/// on mainnet gets a mainnet mint.
+/// Mints a plain SPL token. `cluster` decides which network it is minted on, so a creator on mainnet
+/// gets a mainnet mint.
+///
+/// This is **not** part of the launch flow: Meteora's DBC pool creation allocates the base mint itself
+/// (`initialize_virtual_pool_with_spl_token`), so a launch must be given a fresh keypair whose account
+/// does not exist yet. Creating the token first makes the launch fail on-chain with "account already in
+/// use". Kept for flows that want a bare mint without a pool.
 export async function createBaseMint(
   provider: SolanaProvider,
   decimals: number,
@@ -303,16 +312,17 @@ export interface LaunchInput {
   creatorPermanentLockedLiquidityPercentage: number;
 }
 
-/// Deploys the financeable DBC launch. The config account is generated here and signs. `cluster` is
+/// Deploys the financeable DBC launch. The config account is generated here and signs; so does the
+/// base mint's keypair, because DBC creates that mint as part of pool creation. `cluster` is
 /// the network the pool is created on — Meteora's DBC and DAMM v2 programs run on both devnet and
 /// mainnet, so a creator with a mainnet wallet launches on mainnet.
 export async function deployLaunch(
   provider: SolanaProvider,
   input: LaunchInput,
   cluster?: string,
-  /// The base mint's keypair. DBC asks the mint to sign alongside the config, so it has to survive
-  /// from `createBaseMint` to here — without it the transaction is one signature short and the wallet
-  /// refuses it.
+  /// The base mint's keypair, which must be a *fresh* one: DBC allocates the mint account during pool
+  /// creation, so it has to sign — and passing an existing mint is what makes a launch fail with
+  /// "account already in use".
   baseMintKeypair?: Keypair,
 ): Promise<{ config: string; pool: string; signature: string }> {
   const creator = requirePublicKey(provider);

@@ -180,6 +180,14 @@ export class PerpetuaVaultClient {
     return this.fetch<StakeAccountData>("stake", address);
   }
 
+  /// `null` instead of a thrown "account does not exist" when a wallet has never staked in this
+  /// vault, so callers can say what is actually wrong instead of letting the program fail.
+  async fetchStakeNullable(address: PublicKey): Promise<StakeAccountData | null> {
+    const client = this.accounts.stake;
+    if (!client) throw new Error("account stake is missing from the IDL");
+    return (await client.fetchNullable(address)) as StakeAccountData | null;
+  }
+
   async fetchConfig(address: PublicKey): Promise<ConfigAccountData> {
     return this.fetch<ConfigAccountData>("config", address);
   }

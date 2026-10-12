@@ -17,7 +17,7 @@ import {
 } from "@perpetua/shared";
 import { valuePosition } from "@perpetua/valuation";
 import { type Connection, PublicKey } from "@solana/web3.js";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
@@ -25,6 +25,7 @@ import { readVaultEvents } from "./events.js";
 import { createMcpEndpoint } from "./mcp.js";
 import type { Store } from "./store/types.js";
 import {
+  BuilderError,
   buildCrankClaim,
   buildCreateMint,
   buildCreateVault,
@@ -224,9 +225,14 @@ const limitQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).def
 const pubkey = z.string().min(32).max(44);
 
 /// The fields a token metadata document needs, sized so the `uri` a launch stores on-chain — this
-/// endpoint plus its query string — stays well inside the 200 characters `/v1/tx/launch` accepts. A
-/// longer description or image link has to be hosted by the creator instead, and the launch page
+/// endpoint plus its query string — stays well inside the 1232 bytes a Solana transaction may occupy.
+/// A longer description or image link has to be hosted by the creator instead, and the launch page
 /// says so rather than letting the transaction fail.
+///
+/// Both a long and a short spelling are accepted (`name`/`n`, `symbol`/`s`, …). The short one is what
+/// new launches use because every character of the link is a character the launch transaction cannot
+/// spend elsewhere; the long one is kept so tokens whose on-chain `uri` already carries it still
+/// resolve.
 /// The logo a launch gets when the creator leaves the image field blank. It rides in the document this
 /// endpoint serves rather than in the on-chain `uri`, so a token always has an image without making the
 /// launch link longer than the 200 characters a launch has to fit into.
@@ -234,11 +240,16 @@ const DEFAULT_TOKEN_IMAGE =
   process.env.TOKEN_IMAGE_URL ?? "https://perpetua-meteora.netlify.app/token-default.png";
 
 const metadataQuery = z.object({
-  name: z.string().min(1).max(24),
-  symbol: z.string().min(1).max(10),
-  description: z.string().min(1).max(60),
+  name: z.string().min(1).max(24).optional(),
+  n: z.string().min(1).max(24).optional(),
+  symbol: z.string().min(1).max(10).optional(),
+  s: z.string().min(1).max(10).optional(),
+  description: z.string().min(1).max(60).optional(),
+  d: z.string().min(1).max(60).optional(),
   image: z.string().url().max(80).optional(),
+  i: z.string().url().max(80).optional(),
   external: z.string().url().max(60).optional(),
+  e: z.string().url().max(60).optional(),
 });
 
 const createVaultBody = z.object({
@@ -459,25 +470,11 @@ export function createApp(deps: AppDeps): Hono {
   /// is the difference between a launch that needs someone to publish a JSON file somewhere first and
   /// a launch that is one form: every field the document needs travels in this URL, and the URL is
   /// what the pool stores on-chain as the token's `uri`.
-  app.get("/v1/token/metadata", (c) => {
-    const parsed = metadataQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    const { name, symbol, description, external } = parsed.data;
-    // A blank image falls back to the default logo, so a launch with no hosted art still renders.
-    const image = parsed.data.image ?? DEFAULT_TOKEN_IMAGE;
-    return c.json(
-      {
-        name,
-        symbol,
-        description,
-        image,
-        ...(external ? { external_url: external } : {}),
-        properties: { files: [{ uri: image, type: "image" }], category: "image" },
-      },
-      200,
-      { "cache-control": "public, max-age=31536000, immutable" },
-    );
-  });
+  ///
+  /// Served at both spellings: the long path for readability, and the short `/v1/t` + one-letter keys
+  /// that a launch actually links to, because the whole link lives inside the launch transaction.
+  app.get("/v1/token/metadata", tokenMetadataDocument);
+  app.get("/v1/t", tokenMetadataDocument);
 
   app.get("/v1/sale/plan", (c) => {
     const parsed = saleQuery.safeParse(c.req.query());
@@ -741,6 +738,38 @@ export function createApp(deps: AppDeps): Hono {
   return app;
 }
 
+/// The token metadata document wallets read. Built from the query string, so a creator fills in a form
+/// and the token has metadata — nobody has to publish a JSON file first. Accepts the long field names
+/// and the short ones the launch page links with.
+function tokenMetadataDocument(c: Context): Response {
+  const parsed = metadataQuery.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+
+  const name = parsed.data.name ?? parsed.data.n;
+  const symbol = parsed.data.symbol ?? parsed.data.s;
+  const description = parsed.data.description ?? parsed.data.d;
+  if (!name || !symbol || !description) {
+    return c.json({ error: "metadata needs a name, a symbol and a description" }, 400);
+  }
+
+  const external = parsed.data.external ?? parsed.data.e;
+  // A blank image falls back to the default logo, so a launch with no hosted art still renders.
+  const image = parsed.data.image ?? parsed.data.i ?? DEFAULT_TOKEN_IMAGE;
+
+  return c.json(
+    {
+      name,
+      symbol,
+      description,
+      image,
+      ...(external ? { external_url: external } : {}),
+      properties: { files: [{ uri: image, type: "image" }], category: "image" },
+    },
+    200,
+    { "cache-control": "public, max-age=31536000, immutable" },
+  );
+}
+
 /// The data API is the only source of fee history. When it is unreachable, or has nothing for the
 /// pool, say so — a stand-in series is indistinguishable from a real one once it reaches a chart.
 function dataApiError(error: unknown): string {
@@ -764,9 +793,12 @@ function priceError(error: unknown): { status: 404 | 422 | 502; body: { error: s
 }
 
 /// The transaction builders read the chain — a blockhash, the config account, the vault account — so
-/// they fail for two very different reasons: the request names something that is not there, or the
-/// RPC itself is unhappy. Say which, instead of leaking an opaque 500.
+/// they fail for three very different reasons: the request asks for something that cannot work (a
+/// stake that does not exist, a transaction too large for the network), the request names something
+/// that is not there, or the RPC itself is unhappy. Each gets its own status and its own sentence,
+/// because the pages word their errors per cause.
 function chainError(error: unknown): { status: 400 | 502; message: string } {
+  if (error instanceof BuilderError) return { status: error.status, message: error.message };
   const message = error instanceof Error ? error.message : "could not build the transaction";
   const missing = /does not exist|no data|could not find|not found|invalid public key/i.test(
     message,

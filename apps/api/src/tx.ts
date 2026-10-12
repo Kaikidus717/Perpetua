@@ -1,10 +1,17 @@
 import { AnchorProvider, type Wallet } from "@coral-xyz/anchor";
-import { PerpetuaVaultClient, findConfigPda, findStakePda, findVaultPda } from "@perpetua/sdk";
+import {
+  PerpetuaVaultClient,
+  findConfigPda,
+  findStakePda,
+  findVaultPda,
+  pending as pendingFees,
+} from "@perpetua/sdk";
 import type {
   ClaimAccounts,
   DbcLaunchParams,
   DlmmPreset,
   LadderPlan,
+  StakeAccountData,
   VaultAccountData,
 } from "@perpetua/sdk";
 import { DammV2Adapter } from "@perpetua/sdk/adapters/damm-v2";
@@ -34,6 +41,52 @@ export const SYSTEM_PROGRAM = new PublicKey("11111111111111111111111111111111");
 export const ASSOCIATED_TOKEN_PROGRAM = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
+
+/// `FEE_PER_SHARE_PRECISION` in `programs/perpetua_vault/src/constants.rs`, needed to mirror the
+/// program's pending-fee formula exactly.
+const FEE_PER_SHARE_PRECISION = 10n ** 18n;
+
+/// The largest a legacy (non-versioned) transaction may be, signatures and all. The RPC rejects
+/// anything longer with "Transaction too large", and some wallets refuse to sign it at all — so a
+/// build that overflows this is the *request's* fault and has to say which field is too long, rather
+/// than reaching the wallet and coming back as a shrug.
+const MAX_LEGACY_TX_BYTES = 1232;
+
+/// A build failure the caller can fix (400), as opposed to an upstream fault like a dead RPC (502).
+/// The pages word their errors per cause, so the two must not be collapsed into one status.
+export class BuilderError extends Error {
+  readonly status: 400 | 502;
+
+  constructor(message: string, status: 400 | 502 = 400) {
+    super(message);
+    this.name = "BuilderError";
+    this.status = status;
+  }
+}
+
+/// Serialize for the wallet to sign, refusing anything the network cannot carry.
+///
+/// web3.js does its own size check and throws first ("Transaction too large: 1278 > 1232"), which would
+/// reach the pages as an upstream fault; catching it here keeps it a 400 with an actionable sentence.
+function encode(transaction: Transaction): string {
+  let wire: Buffer;
+  try {
+    wire = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+  } catch (error) {
+    if (error instanceof Error && /too large|exceed/i.test(error.message)) {
+      throw new BuilderError(
+        `the transaction is over the ${MAX_LEGACY_TX_BYTES}-byte limit a Solana transaction may occupy (${error.message}). Shorten the longest field — on a launch that is the metadata link — and try again.`,
+      );
+    }
+    throw error;
+  }
+  if (wire.length > MAX_LEGACY_TX_BYTES) {
+    throw new BuilderError(
+      `this transaction is ${wire.length} bytes and a Solana transaction can carry at most ${MAX_LEGACY_TX_BYTES}; shorten the longest field (on a launch that is the metadata link) and try again`,
+    );
+  }
+  return wire.toString("base64");
+}
 
 /// Builds a read-only Anchor provider: it only reads accounts, so the wallet never signs. Exported
 /// because the vault registry is read from the chain, not from an indexer.
@@ -67,9 +120,7 @@ async function serializeInstructions(
   const transaction = new Transaction().add(...instructions);
   transaction.feePayer = new PublicKey(feePayer);
   transaction.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
-  return transaction
-    .serialize({ requireAllSignatures: false, verifySignatures: false })
-    .toString("base64");
+  return encode(transaction);
 }
 
 interface VaultRefs {
@@ -78,6 +129,11 @@ interface VaultRefs {
   vault: PublicKey;
   account: VaultAccountData;
   claim: ClaimAccounts;
+  /// The caller's stake account, `null` when this wallet has never staked in this vault. Handing the
+  /// program a stake PDA that does not exist fails with Anchor's `AccountNotInitialized` (3012),
+  /// which is not something a visitor can act on — so the builders check first and say what is wrong.
+  stake: StakeAccountData | null;
+  stakeAddress: PublicKey;
 }
 
 async function resolveVault(
@@ -104,7 +160,46 @@ async function resolveVault(
     },
     cfg.treasury,
   );
-  return { client, config, vault, account, claim };
+  const [stakeAddress] = findStakePda(client.programId, vault, feePayer);
+  const stake = await client.fetchStakeNullable(stakeAddress);
+  return { client, config, vault, account, claim, stake, stakeAddress };
+}
+
+/// The on-chain accumulator's own formula, mirrored in `@perpetua/sdk/math`, so the builders can tell
+/// "nothing is ready to harvest" apart from "this wallet never staked" *before* the wallet is asked to
+/// sign. Both of those otherwise surface as opaque program errors.
+function pendingNow(refs: VaultRefs): bigint {
+  if (!refs.stake) return 0n;
+  const amount = BigInt(refs.stake.amount.toString());
+  const a = pendingFees(
+    amount,
+    BigInt(refs.account.accFeePerShareA.toString()),
+    BigInt(refs.stake.debtA.toString()),
+    FEE_PER_SHARE_PRECISION,
+  );
+  const b = pendingFees(
+    amount,
+    BigInt(refs.account.accFeePerShareB.toString()),
+    BigInt(refs.stake.debtB.toString()),
+    FEE_PER_SHARE_PRECISION,
+  );
+  return a + b;
+}
+
+/// The stake amount this wallet actually holds, so "stake 5 shares" with 2 in the wallet is answered
+/// with a sentence instead of a token-program failure. `null` when the balance cannot be read.
+async function shareBalance(
+  connection: Connection,
+  shareMint: PublicKey,
+  owner: PublicKey,
+): Promise<bigint | null> {
+  try {
+    const account = getAssociatedTokenAddressSync(shareMint, owner);
+    const balance = await connection.getTokenAccountBalance(account);
+    return BigInt(balance.value.amount);
+  } catch {
+    return null;
+  }
 }
 
 /// `harvest` pays a holder out with `transfer_checked`, so the holder's own fee token accounts have
@@ -204,7 +299,16 @@ export interface StakeParams {
 export async function buildStake(connection: Connection, params: StakeParams): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  const [stake] = findStakePda(refs.client.programId, refs.vault, owner);
+  const stake = refs.stakeAddress;
+  const amount = BigInt(params.amount);
+
+  if (amount <= 0n) throw new BuilderError("stake a positive number of shares");
+  const held = await shareBalance(connection, refs.account.shareMint, owner);
+  if (held !== null && amount > held) {
+    throw new BuilderError(
+      `this wallet holds ${held.toString()} of these shares, so it cannot stake ${amount.toString()} — buy or create shares first`,
+    );
+  }
 
   const instruction = await refs.client.stake(
     {
@@ -219,7 +323,7 @@ export async function buildStake(connection: Connection, params: StakeParams): P
       shareTokenProgram: SHARE_TOKEN_PROGRAM,
       systemProgram: SYSTEM_PROGRAM,
     },
-    BigInt(params.amount),
+    amount,
   );
 
   // The vault's share account and the fee accounts the claim pays into are created in the same
@@ -241,7 +345,8 @@ export async function buildStake(connection: Connection, params: StakeParams): P
 export async function buildUnstake(connection: Connection, params: StakeParams): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  const [stake] = findStakePda(refs.client.programId, refs.vault, owner);
+  const stakeAccount = requireStake(refs, "unstake");
+  const amount = requireStakeAmount(refs, stakeAccount, params.amount);
 
   const instruction = await refs.client.unstake(
     {
@@ -249,13 +354,13 @@ export async function buildUnstake(connection: Connection, params: StakeParams):
       config: refs.config,
       vault: refs.vault,
       ...refs.claim,
-      stake,
+      stake: refs.stakeAddress,
       shareMint: refs.account.shareMint,
       ownerShareAccount: getAssociatedTokenAddressSync(refs.account.shareMint, owner),
       vaultShareAccount: getAssociatedTokenAddressSync(refs.account.shareMint, refs.vault, true),
       shareTokenProgram: SHARE_TOKEN_PROGRAM,
     },
-    BigInt(params.amount),
+    amount,
   );
 
   // `unstake` claims before it releases, so it needs the same setup as `stake`: the vault's share
@@ -282,19 +387,20 @@ export async function buildUnstakeNoClaim(
 ): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  const [stake] = findStakePda(refs.client.programId, refs.vault, owner);
+  const stakeAccount = requireStake(refs, "release shares from");
+  const amount = requireStakeAmount(refs, stakeAccount, params.amount);
 
   const instruction = await refs.client.unstakeNoClaim(
     {
       owner,
       vault: refs.vault,
-      stake,
+      stake: refs.stakeAddress,
       shareMint: refs.account.shareMint,
       ownerShareAccount: getAssociatedTokenAddressSync(refs.account.shareMint, owner),
       vaultShareAccount: getAssociatedTokenAddressSync(refs.account.shareMint, refs.vault, true),
       shareTokenProgram: SHARE_TOKEN_PROGRAM,
     },
-    BigInt(params.amount),
+    amount,
   );
 
   // The shares are released out of the vault's share account, so it has to exist.
@@ -308,18 +414,50 @@ export async function buildUnstakeNoClaim(
   return serializeInstructions(connection, [...setup, instruction], params.owner);
 }
 
+/// The caller's stake, or a sentence explaining that there is none. Without this the program answers
+/// with `AccountNotInitialized` (3012) on the `stake` account, which reads as a broken app.
+function requireStake(refs: VaultRefs, action: string): StakeAccountData {
+  if (!refs.stake) {
+    throw new BuilderError(
+      `this wallet has no shares staked in that vault, so there is nothing to ${action} — stake shares first`,
+    );
+  }
+  return refs.stake;
+}
+
+/// The amount must be a positive number no larger than what is actually staked.
+function requireStakeAmount(refs: VaultRefs, stake: StakeAccountData, amount: string): bigint {
+  const value = BigInt(amount);
+  const staked = BigInt(stake.amount.toString());
+  if (value <= 0n) throw new BuilderError("give a positive number of shares");
+  if (value > staked) {
+    throw new BuilderError(
+      `this wallet has ${staked.toString()} shares staked in that vault (${refs.stakeAddress.toBase58()}), less than ${value.toString()}`,
+    );
+  }
+  return value;
+}
+
 export async function buildHarvest(
   connection: Connection,
   params: { owner: string; vault: string },
 ): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  const [stake] = findStakePda(refs.client.programId, refs.vault, owner);
+  requireStake(refs, "harvest");
+
+  // `harvest` settles first and then refuses when nothing is owed (`NothingToHarvest`, 6005). Saying
+  // so here — with the reason fees have not accrued — beats a program error the wallet cannot explain.
+  if (pendingNow(refs) === 0n) {
+    throw new BuilderError(
+      "no fees are ready to harvest: this position has not earned anything since the last claim, so run Crank claim once the pool has swap volume, then harvest",
+    );
+  }
 
   const instruction = await refs.client.harvest({
     owner,
     vault: refs.vault,
-    stake,
+    stake: refs.stakeAddress,
     tokenAMint: refs.account.tokenAMint,
     tokenBMint: refs.account.tokenBMint,
     vaultAAccount: refs.claim.vaultAAccount,
@@ -359,9 +497,7 @@ async function serializeTransaction(
 ): Promise<string> {
   transaction.feePayer = new PublicKey(feePayer);
   transaction.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
-  return transaction
-    .serialize({ requireAllSignatures: false, verifySignatures: false })
-    .toString("base64");
+  return encode(transaction);
 }
 
 function cluster(): Cluster {
@@ -475,10 +611,20 @@ export interface LaunchResponse {
 }
 
 /// Builds the unsigned financeable launch: the DBC config and its pool, in one transaction.
+///
+/// The DBC program creates the base token itself — `initialize_virtual_pool_with_spl_token` allocates
+/// the mint account as part of pool creation — so the mint must be a *fresh* address here. Creating it
+/// first (the old two-step flow) makes the launch die on-chain with `Allocate … already in use`
+/// (`custom program error: 0x0`), which is why that is refused up front instead.
 export async function buildLaunch(
   connection: Connection,
   params: LaunchParams,
 ): Promise<LaunchResponse> {
+  if (await connection.getAccountInfo(new PublicKey(params.baseMint))) {
+    throw new BuilderError(
+      "that base mint already exists on chain. A DBC launch creates the token itself, so pass the address of a fresh keypair — the same keypair signs the launch",
+    );
+  }
   const adapter = new DbcAdapter({ connection });
   const result = await adapter.buildLaunch(params);
   return {

@@ -31,6 +31,11 @@ export interface AddressLocation {
 /// The `uri` a launch stores on-chain: this app's own metadata document, with every field wallets
 /// need carried in the query string. A creator fills in a form and the token has metadata — nobody has
 /// to go and publish a JSON file first.
+///
+/// The keys are one letter each on purpose. The link lives *inside* the launch transaction, which may
+/// occupy at most 1232 bytes in total, so every character spent here is a character a description or
+/// image link cannot have. The long spellings still work on the endpoint; the short ones are what new
+/// launches link to.
 export function metadataUri(fields: {
   name: string;
   symbol: string;
@@ -40,14 +45,10 @@ export function metadataUri(fields: {
   image?: string;
   external?: string;
 }): string {
-  const search = new URLSearchParams({
-    name: fields.name,
-    symbol: fields.symbol,
-    description: fields.description,
-  });
-  if (fields.image) search.set("image", fields.image);
-  if (fields.external) search.set("external", fields.external);
-  return `${apiBase()}/v1/token/metadata?${search.toString()}`;
+  const search = new URLSearchParams({ n: fields.name, s: fields.symbol, d: fields.description });
+  if (fields.image) search.set("i", fields.image);
+  if (fields.external) search.set("e", fields.external);
+  return `${apiBase()}/v1/t?${search.toString()}`;
 }
 
 /// One build, either cluster. Visiting any page with `?api=<url>` pins the API base in the browser

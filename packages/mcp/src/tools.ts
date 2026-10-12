@@ -587,13 +587,16 @@ const getSalePlan = defineTool({
   },
 });
 
-/// A plain SPL mint, the first half of a launch.
+/// A plain SPL mint. Note it is **not** a prerequisite for a launch: Meteora's DBC pool creation
+/// allocates the base mint itself, so a launch needs a fresh keypair rather than a pre-created token.
 const buildCreateMintTx = txTool({
   name: "build_create_mint_tx",
   title: "Build an unsigned mint transaction",
   description:
-    "Build the unsigned transaction that creates the base token a launch needs. Nothing is signed " +
-    "and nothing is sent.",
+    "Build the unsigned transaction that creates a plain SPL token. Nothing is signed " +
+    "and nothing is sent. This is NOT part of a DBC launch: the launch creates its own token " +
+    "(DBC allocates the mint during pool creation), so creating one first makes the launch fail " +
+    "with 'account already in use'. Use this only when a bare token is wanted without a pool.",
   inputSchema: z.object({
     payer: PUBKEY.describe("Wallet that pays for and owns the mint."),
     mint: PUBKEY.describe("The new mint's address. Generate a keypair and sign with it."),
@@ -617,7 +620,9 @@ const buildLaunchTx = txTool({
   inputSchema: z.object({
     creator: PUBKEY.describe("Wallet that pays, signs and receives the fees."),
     config: PUBKEY.describe("The new config's address. Generate a keypair and sign with it."),
-    base_mint: PUBKEY.describe("The token created by build_create_mint_tx."),
+    base_mint: PUBKEY.describe(
+      "A FRESH mint address that does not exist on chain yet: the launch creates this token, so its keypair must sign the transaction. Do not pre-create it.",
+    ),
     quote_mint: PUBKEY.describe("Quote token, usually wrapped SOL or USDC."),
     name: z.string().min(1).max(32).describe("Token name."),
     symbol: z.string().min(1).max(10).describe("Ticker."),

@@ -522,11 +522,16 @@ export interface OpenSaleResult {
 
 /// Builds the unsigned `createLbPair2` transaction for the pFEE/quote pair. When the pair already
 /// exists there is nothing to sign, so `created` is false and `transaction` is null.
+/// The DLMM presets are **per cluster**: a preset account that exists on mainnet does not exist on
+/// devnet, and `createLbPair2` answers "Account does not exist" when handed one from the other
+/// network. So the cluster a request is for is threaded through instead of read from the process
+/// default — which is mainnet on this deployment, and silently wrong for every devnet vault.
 export async function buildOpenSale(
   connection: Connection,
   params: OpenSaleParams,
+  clusterName: Cluster = cluster(),
 ): Promise<OpenSaleResult> {
-  const adapter = new DlmmAdapter({ connection, cluster: cluster() });
+  const adapter = new DlmmAdapter({ connection, cluster: clusterName });
   const result = await adapter.buildCreatePair(params);
   return {
     pool: result.pool,
@@ -635,8 +640,12 @@ export async function buildLaunch(
 }
 
 /// The DLMM presets available on this cluster, i.e. the bin steps a share pair may be created at.
-export async function listDlmmPresets(connection: Connection): Promise<DlmmPreset[]> {
-  const adapter = new DlmmAdapter({ connection, cluster: cluster() });
+/// Cluster-specific, like the accounts they are read from — see `buildOpenSale`.
+export async function listDlmmPresets(
+  connection: Connection,
+  clusterName: Cluster = cluster(),
+): Promise<DlmmPreset[]> {
+  const adapter = new DlmmAdapter({ connection, cluster: clusterName });
   return adapter.listPresets();
 }
 

@@ -91,6 +91,20 @@ function connectionFor(deps: AppDeps, requested?: unknown): Connection | undefin
   return fallback ? map[fallback] : undefined;
 }
 
+/// The cluster a request resolves to, by the same rule `connectionFor` uses. Anything reading
+/// cluster-specific chain state — DLMM's preset accounts, for one — has to be told the same answer
+/// the connection was given, or it reads mainnet presets for a devnet transaction.
+function clusterFor(deps: AppDeps, requested?: unknown): ClusterName {
+  const map = clusterMap(deps);
+  const named = asClusterName(requested);
+  if (named && map[named]) return named;
+  return (
+    asClusterName(deps.defaultCluster) ??
+    (Object.keys(map)[0] as ClusterName | undefined) ??
+    "devnet"
+  );
+}
+
 /// The connection the vault program lives behind. The registry is read from the chain, not an
 /// indexer, which is what lets the hosted app show live vaults with no other service running.
 function vaultConnection(deps: AppDeps): Connection | undefined {
@@ -492,7 +506,9 @@ export function createApp(deps: AppDeps): Hono {
     const connection = connectionFor(deps, c.req.query("cluster"));
     if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
     try {
-      return c.json({ presets: await listDlmmPresets(connection) });
+      return c.json({
+        presets: await listDlmmPresets(connection, clusterFor(deps, c.req.query("cluster"))),
+      });
     } catch (error) {
       const { status, message } = chainError(error);
       return c.json({ error: message }, status);
@@ -515,7 +531,9 @@ export function createApp(deps: AppDeps): Hono {
     const parsed = openSaleBody.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
     try {
-      return c.json(await buildOpenSale(connection, parsed.data));
+      return c.json(
+        await buildOpenSale(connection, parsed.data, clusterFor(deps, c.req.query("cluster"))),
+      );
     } catch (error) {
       const { status, message } = chainError(error);
       return c.json({ error: message }, status);
@@ -786,6 +804,12 @@ class NoHistoryError extends Error {}
 function priceError(error: unknown): { status: 404 | 422 | 502; body: { error: string } } {
   if (error instanceof NoHistoryError) return { status: 422, body: { error: error.message } };
   const message = dataApiError(error);
+  /// A 400 from the data service means the address never even reached a query — it is not a public
+  /// key at all. That is the caller's mistake rather than an upstream outage, and reporting it as a
+  /// 502 leaves whoever typed it nothing to act on.
+  if (/failed with 400/.test(message)) {
+    return { status: 404, body: { error: "that is not a Solana pool address" } };
+  }
   if (/failed with 404/.test(message)) {
     return {
       status: 404,

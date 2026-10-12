@@ -202,9 +202,12 @@ export const api = {
     get<{ series: PoolDailySeries }>(`/v1/pools/${pool}/series?days=${days}`),
   ladder: (fairValuePerShareUsd: number, totalShares = 1_000_000) =>
     get<{ plan: LadderView }>(`/v1/sale/plan${query({ fairValuePerShareUsd, totalShares })}`),
-  salePresets: () =>
+  /// The presets are DLMM *accounts*, and accounts live on one cluster: asking for them without saying
+  /// which is how a devnet market got built from a mainnet preset and failed with "Account does not
+  /// exist". The caller passes the cluster it will create the market on.
+  salePresets: (cluster?: ClusterName) =>
     get<{ presets: Array<{ address: string; binStep: number; baseFactor: string }> }>(
-      "/v1/sale/presets",
+      `/v1/sale/presets${cluster ? `?cluster=${cluster}` : ""}`,
     ),
   stats: () => get<{ stats: StatsSummary }>("/v1/stats"),
   positions: (wallet: string, cluster?: ClusterName) =>

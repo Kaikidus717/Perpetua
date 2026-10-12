@@ -59,7 +59,10 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
     null,
   );
 
-  const presets = useQuery({ queryKey: ["sale-presets"], queryFn: () => api.salePresets() });
+  const presets = useQuery({
+    queryKey: ["sale-presets", VAULT_CLUSTER],
+    queryFn: () => api.salePresets(VAULT_CLUSTER),
+  });
   const valuation = useQuery({
     queryKey: ["sale-valuation", pool],
     queryFn: () => api.valuation(pool),

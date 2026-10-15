@@ -73,8 +73,14 @@ function clusterSuffix(cluster: Cluster): string {
   return cluster === "mainnet" ? "" : `?cluster=${cluster}`;
 }
 
+/// Solscan indexes mainnet properly, but its devnet side only shows accounts it can attribute — a
+/// vault or a position owned by our own program answers "we're unable to locate this account", which
+/// reads as a broken link even though the account is there. Solana Explorer reads the chain instead,
+/// so devnet *account* links go there. Transactions stay on Solscan, which does index devnet ones.
 export function explorerUrl(address: string, cluster: Cluster = APP_CLUSTER): string {
-  return `https://solscan.io/account/${address}${clusterSuffix(cluster)}`;
+  return cluster === "mainnet"
+    ? `https://solscan.io/account/${address}`
+    : `https://explorer.solana.com/address/${address}?cluster=${cluster}`;
 }
 
 export function txUrl(signature: string, cluster: Cluster = APP_CLUSTER): string {

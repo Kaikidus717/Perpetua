@@ -55,8 +55,21 @@ jobs:
           if [ ! -f "$HOME/.config/solana/id.json" ]; then
             solana-keygen new --no-bip39-passphrase -o "$HOME/.config/solana/id.json" < /dev/null
           fi
+      - name: Toolchain versions
+        run: |
+          echo "::notice title=versions::$(anchor --version) / $(solana --version) / $(cargo-build-sbf --version 2>&1 | head -1)"
+      # Job logs need admin rights, so a failure here reports its own last lines as an annotation —
+      # that copy is readable anonymously and lands next to the run.
       - name: Anchor build
-        run: anchor build
+        run: |
+          set +e
+          anchor build 2>&1 | tee /tmp/anchor-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 15 /tmp/anchor-build.log | tr '\n' '|' | cut -c1-800)
+            echo "::error title=anchor build failed::$summary"
+            exit "$status"
+          fi
       # Reproducible builds need Docker and take several minutes; worth running, not worth blocking a
       # green build on. Its output stays in the log either way.
       - name: Verifiable build

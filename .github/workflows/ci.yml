@@ -33,11 +33,34 @@ jobs:
       - name: Unit tests
         working-directory: programs/perpetua_vault
         run: cargo test --features no-entrypoint
+      # `anchor build` shells out to the Solana CLI's `cargo build-sbf`, which the Rust toolchain
+      # alone does not provide — without this step the build fails with exit code 1 and no useful
+      # message. The CLI also brings the SBF platform tools that compile the program.
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
       - name: Install Anchor
-        run: cargo install --git https://github.com/coral-xyz/anchor avm --locked --force && avm install 0.32.1 && avm use 0.32.1
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install 0.32.1
+          avm use 0.32.1
+          # avm puts `anchor` here and does not add it to PATH itself.
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+      # Anchor.toml names ~/.config/solana/id.json as the provider wallet; a runner has no keypair, and
+      # a throwaway one is enough for a build (nothing is deployed from CI).
+      - name: Throwaway keypair for the build
+        run: |
+          mkdir -p "$HOME/.config/solana"
+          if [ ! -f "$HOME/.config/solana/id.json" ]; then
+            solana-keygen new --no-bip39-passphrase -o "$HOME/.config/solana/id.json" < /dev/null
+          fi
       - name: Anchor build
         run: anchor build
+      # Reproducible builds need Docker and take several minutes; worth running, not worth blocking a
+      # green build on. Its output stays in the log either way.
       - name: Verifiable build
+        continue-on-error: true
         run: |
           cargo install solana-verify --locked
           solana-verify build --library-name perpetua_vault

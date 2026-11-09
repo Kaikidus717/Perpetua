@@ -21,7 +21,10 @@
 
 [functions]
   directory = "netlify/functions"
-  node_bundler = "esbuild"
+  # Netlify's default bundler (zisi), deliberately not `esbuild`. esbuild ships a platform-specific
+  # binary, so any tree that has seen a Windows install drags `@esbuild/win32-x64` into a Linux build and
+  # the function fails to bundle. Nothing here needs esbuild: `node netlify/api/build.mjs` already
+  # produces `netlify/api/api.bundle.cjs`, and this step only wraps `api.ts` around it.
 
 [[redirects]]
   from = "/api/*"

@@ -48,15 +48,8 @@ export function VaultActions({ vault }: { vault: string }) {
   /// explicitly keeps it correct even when the deploy's default cluster is mainnet.
   const VAULT_CLUSTER = "devnet";
 
-  /// True when this page may also *create* the fees its buttons collect. A locked position only earns
-  /// from swaps, so on devnet — where the wallet that opened the pool still holds its mint authority —
-  /// "Crank claim" first trades a little of the pool's own token against itself. On mainnet it does
-  /// not: the fees a share is paid have to come from other people's trading.
   const canAddVolume = VAULT_CLUSTER === "devnet";
 
-  /// A mainnet wallet cannot sign these — the program is not deployed there — so the buttons stay
-  /// shut and the page says why, instead of failing at the wallet. The answer comes from the shared
-  /// lookup in `lib/network`, so this card and the header badge can never disagree.
   const network = useWalletNetwork(wallet.address);
   const wrongNetwork = network.cluster === "mainnet-beta";
 
@@ -78,7 +71,7 @@ export function VaultActions({ vault }: { vault: string }) {
       ) : null}
 
       {ready && wrongNetwork ? (
-        <p className="text-sm text-warn">
+        <p className="text-[13px] text-warn">
           This wallet is on {network.label}. Staking, harvesting and cranking need the vault
           program, which is deployed on devnet only — switch the wallet to devnet (Phantom: Settings
           → Developer Settings → Change Network → Devnet) and reload to use these. Every transaction
@@ -86,7 +79,7 @@ export function VaultActions({ vault }: { vault: string }) {
         </p>
       ) : null}
       {ready && network.label && !wrongNetwork ? (
-        <p className="text-xs text-muted">
+        <p className="text-[12px] text-muted">
           This wallet is on {network.label}, where the vault program lives — so these are{" "}
           {network.label} transactions.
         </p>
@@ -97,7 +90,7 @@ export function VaultActions({ vault }: { vault: string }) {
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
           placeholder="share amount (base units)"
-          className="min-w-[18rem] flex-1 rounded-md border border-line bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none placeholder:text-muted focus:border-ink"
+          className="min-w-[18rem] flex-1 rounded-md border border-line bg-canvas px-3 py-2 font-mono text-[13px] text-ink outline-none placeholder:text-muted focus:border-ink"
         />
         <button
           type="button"
@@ -159,10 +152,6 @@ export function VaultActions({ vault }: { vault: string }) {
           onClick={() => {
             if (!activeProvider) return;
             void run("crank", async () => {
-              /// A locked position earns nothing on its own, so on devnet the crank first puts a
-              /// little volume on this pool: the fees that leaves behind are what the crank sweeps in
-              /// and the harvest then pays out. A wallet that cannot add volume — one that did not
-              /// open this pool — still gets its crank; the failure is reported, not blocking.
               if (canAddVolume) {
                 try {
                   const warmed = await warmPool(activeProvider, vault, VAULT_CLUSTER);
@@ -182,13 +171,13 @@ export function VaultActions({ vault }: { vault: string }) {
         </button>
       </div>
 
-      <p className="text-xs text-muted">
+      <p className="text-[12px] text-muted">
         Force exit releases your shares without claiming fees. Use it if a fee mint is paused or
         blocked; have another wallet crank, then harvest, to collect what is owed.
       </p>
 
       {canAddVolume ? (
-        <p className="text-xs text-muted">
+        <p className="text-[12px] text-muted">
           Crank claim also trades a little of this pool&apos;s own token on devnet first, so the
           crank has fees to sweep and Harvest fees has something to pay — a locked position earns
           nothing until its pool is traded. That costs this wallet a little devnet SOL and some of
@@ -196,23 +185,23 @@ export function VaultActions({ vault }: { vault: string }) {
         </p>
       ) : null}
 
-      {note ? <p className="text-sm text-muted">{note}</p> : null}
+      {note ? <p className="text-[13px] text-muted">{note}</p> : null}
 
       {busy ? (
-        <p className="flex items-center gap-2 text-sm text-muted">
+        <p className="flex items-center gap-2 text-[13px] text-muted">
           <Spinner label={busy} />
           {busy}…
         </p>
       ) : null}
-      {message ? <p className="text-sm text-warn">{message}</p> : null}
+      {message ? <p className="text-[13px] text-warn">{message}</p> : null}
       {confirmed ? (
-        <p className="text-sm text-ink">
+        <p className="text-[13px] text-ink">
           Done.{" "}
           <a
             href={txUrl(confirmed)}
             target="_blank"
             rel="noreferrer"
-            className={`font-mono text-xs ${LINK}`}
+            className={`font-mono text-[12px] ${LINK}`}
           >
             view it on Solscan ↗
           </a>

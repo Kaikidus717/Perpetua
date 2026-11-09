@@ -1,12 +1,3 @@
-/// What a visitor reads when something goes wrong. Raw RPC and provider strings are for logs, not for
-/// people: a failed swap should not hand someone a program error code and call it an answer.
-///
-/// The reverse matters just as much, and this file got it wrong first time round: collapsing every
-/// unrecognised failure into "didn't go through. Please try again." hides failures that are *not*
-/// transient — nothing staked, nothing to harvest, a transaction too large for the network — and sends
-/// someone round a loop that cannot succeed. So every failure now says what it was, and the chain's own
-/// words are attached rather than swallowed.
-
 /// `PerpetuaError` in `programs/perpetua_vault/src/errors.rs`, in declaration order from 6000.
 const PERPETUA_ERRORS: Record<number, string> = {
   6000: "This wallet is not allowed to do that for this vault.",

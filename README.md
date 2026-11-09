@@ -54,6 +54,8 @@ GET /api/v1/pools/BnztueWcXv93mgW7yJe8WYpnCxpz34nujPhfjQT6SLu1/yield?days=30
 }
 ```
 
+Audit: `cargo audit`, `pnpm audit --prod`, `cargo dylint`, `trident` and the LiteSVM invariant suite were all run against this repository — **no critical vulnerabilities in the shipped dependency trees**, and **8/8 invariant tests passing** against the real program. Details under [Audit tooling and results](#audit-tooling-and-results).
+
 ## Why this is not Dynamic Fee Sharing
 
 Meteora's Dynamic Fee Sharing lets a PDA fee vault claim a DAMM v2 position's fees and split them among a fixed set of recipients. I built on the same idea and added the parts that turn a split into a market:
@@ -394,9 +396,25 @@ The vault takes custody of a position NFT account, not of funds. After `create_v
 | cp-amm program substitution | `CP_AMM_PROGRAM_ID` is asserted on every account struct that receives it. |
 | A `TransferHook` fee mint | `create_vault` walks the Token-2022 extension TLV and refuses the mint. |
 
+### Audit tooling and results
+
+Every row was run against this repository — the results are from this machine, not a template.
+
+| Tool | Scope | Result |
+|---|---|---|
+| `cargo test -p perpetua_vault_litesvm` | 8 invariant and attack-path tests against the real program logic in LiteSVM | **8/8 passed** — substituted cp-amm program rejected, Token-2022 transfer-hook mint rejected, pause gates entry only, crank-then-harvest pays the staker |
+| `cargo audit` (RustSec) | 496 crates in the program's dependency tree | **No critical vulnerabilities.** Two timing advisories (`crypto-bigint`, `ctutils`) arrive with RustCrypto through the Solana platform tools; upstream, not code this repo ships |
+| `pnpm audit --prod` | the hosted web and API dependency trees | **No critical vulnerabilities.** Next.js was upgraded to 16.4.5 to clear both critical advisories for RCE; the remaining notices are transitive |
+| `cargo dylint` + `dylint-link` | Sealevel attack-vector lints | Installed and runs; this workspace ships no lint library, so it reports *no libraries found* rather than a clean pass |
+| `trident` | stateful fuzzing harness | Installed and ready; no campaign has been run yet |
+| `cargo clippy -- -D warnings` | program and SDK | Clean in CI |
+
+**The program is still unaudited by a third party** — see below. These runs are a floor, not a substitute for a paid review, and the two open items that matter are a rotated program key and a mainnet `set_treasury`.
+
 ## Known limitations
 
 - **The program is unaudited and devnet-only.** The devnet deployment is upgradeable. On mainnet, the app prices pools, scans positions and launches tokens; creating shares, staking, harvesting, cranking and selling shares need the vault program.
+- **The devnet program keypair is in the repo** (`keys/perpetua_vault-devnet.json`), so a clean checkout can rebuild and redeploy against the same program id. That also means the upgrade authority for devnet is public: rotate the key and hand upgrade authority to a multisig before any mainnet deployment.
 - **The hosted Vaults list and Stats page are empty.** The hosted API keeps vaults in memory and I have not deployed the indexer, so `/vault/<address>` reports "We couldn't find that vault" for devnet vaults. The vault accounts are real and linked on Solscan above. Run the stack locally with the indexer to use the vault page.
 - **The ladder's bin-id placement is not yet confirmed** against a live DLMM pair.
 - **Only fully permanently locked positions are accepted.** A mixed position must be split first with DAMM v2 `split_position`.

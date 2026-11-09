@@ -8,9 +8,6 @@ import { BUTTON, BUTTON_PRIMARY, CARD, LINK } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useState } from "react";
 
-/// A wallet that holds no positions has nothing to securitize, so give it something: one click builds
-/// a fresh DAMM v2 pool whose initial position is permanently locked and owned by this wallet. Two
-/// signatures, and the wallet pays the rent. Works on devnet and mainnet.
 export function CreateLockedPosition({
   cluster,
   onCreated,
@@ -53,7 +50,7 @@ export function CreateLockedPosition({
   return (
     <section className={`${CARD} space-y-3 p-5`}>
       <h2 className="text-base font-semibold text-ink">No locked position yet?</h2>
-      <p className="text-sm text-muted">
+      <p className="text-[13px] text-muted">
         Securitizing needs a permanently locked position. This creates one: a fresh DAMM v2 pool
         owned by your wallet, with its liquidity locked forever. Two signatures, and a little SOL
         for rent.
@@ -66,7 +63,7 @@ export function CreateLockedPosition({
       ) : null}
 
       {ready && mismatched ? (
-        <p className="text-sm text-warn">
+        <p className="text-[13px] text-warn">
           This wallet is on {network.label}, but this page is set to {cluster}. Switch networks
           first.
         </p>
@@ -83,16 +80,16 @@ export function CreateLockedPosition({
         </button>
       ) : null}
 
-      {message ? <p className="text-sm text-warn">{message}</p> : null}
+      {message ? <p className="text-[13px] text-warn">{message}</p> : null}
 
       {created ? (
-        <p className="text-sm text-muted">
+        <p className="text-[13px] text-muted">
           Position{" "}
           <a
             href={explorerUrl(created.position, explorerCluster(cluster))}
             target="_blank"
             rel="noreferrer"
-            className={`font-mono text-xs ${LINK}`}
+            className={`font-mono text-[12px] ${LINK}`}
           >
             {shortAddress(created.position)} ↗
           </a>{" "}

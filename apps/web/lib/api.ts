@@ -28,14 +28,6 @@ export interface AddressLocation {
   found: Array<{ cluster: ClusterName; owner: string; kind: string }>;
 }
 
-/// The `uri` a launch stores on-chain: this app's own metadata document, with every field wallets
-/// need carried in the query string. A creator fills in a form and the token has metadata — nobody has
-/// to go and publish a JSON file first.
-///
-/// The keys are one letter each on purpose. The link lives *inside* the launch transaction, which may
-/// occupy at most 1232 bytes in total, so every character spent here is a character a description or
-/// image link cannot have. The long spellings still work on the endpoint; the short ones are what new
-/// launches link to.
 export function metadataUri(fields: {
   name: string;
   symbol: string;
@@ -51,9 +43,6 @@ export function metadataUri(fields: {
   return `${apiBase()}/v1/t?${search.toString()}`;
 }
 
-/// One build, either cluster. Visiting any page with `?api=<url>` pins the API base in the browser
-/// (stored in `localStorage`), so the same deployment — or the same local build — can point at
-/// devnet or mainnet without a rebuild. Falls back to `NEXT_PUBLIC_API_URL`.
 const API_OVERRIDE_KEY = "perpetua.apiBase";
 
 export function apiBase(): string {
@@ -131,10 +120,6 @@ function query(params: object): string {
   return encoded ? `?${encoded}` : "";
 }
 
-/// An HTTP failure that keeps its status, so a page can tell "that address is not a pool" (404), "a
-/// pool with no fee history yet" (422) and "the service is having a moment" (500s) apart — and say
-/// something useful about each.
-
 async function get<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBase()}${path}`, {
     headers: { accept: "application/json" },
@@ -143,10 +128,6 @@ async function get<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-/// The API words its failures for the page that asked — "Meteora's data service has no fee history for
-/// that address, so the pool cannot be priced…" — and that sentence is worth more than the status
-/// code, which cannot say which of "wrong address" and "devnet pool" a 404 is. Read it when it is
-/// there; fall back to the status when it is not.
 async function errorSentence(response: Response): Promise<string | undefined> {
   try {
     const body = (await response.json()) as { error?: unknown };
@@ -157,9 +138,6 @@ async function errorSentence(response: Response): Promise<string | undefined> {
   return undefined;
 }
 
-/// A failed request that keeps its status code, so a page can tell "that address is not a pool"
-/// (404, or 422 for a pool with no fee history yet) from "the service is having a moment" (500s and
-/// network failures) — and say something useful either way.
 export class ApiError extends Error {
   readonly status: number;
 
@@ -202,9 +180,6 @@ export const api = {
     get<{ series: PoolDailySeries }>(`/v1/pools/${pool}/series?days=${days}`),
   ladder: (fairValuePerShareUsd: number, totalShares = 1_000_000) =>
     get<{ plan: LadderView }>(`/v1/sale/plan${query({ fairValuePerShareUsd, totalShares })}`),
-  /// The presets are DLMM *accounts*, and accounts live on one cluster: asking for them without saying
-  /// which is how a devnet market got built from a mainnet preset and failed with "Account does not
-  /// exist". The caller passes the cluster it will create the market on.
   salePresets: (cluster?: ClusterName) =>
     get<{ presets: Array<{ address: string; binStep: number; baseFactor: string }> }>(
       `/v1/sale/presets${cluster ? `?cluster=${cluster}` : ""}`,

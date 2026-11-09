@@ -1,5 +1,6 @@
 "use client";
 
+import { NetworkProvider } from "@/lib/cluster";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 
@@ -19,5 +20,9 @@ export function Providers({ children }: { children: ReactNode }) {
         },
       }),
   );
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <NetworkProvider>{children}</NetworkProvider>
+    </QueryClientProvider>
+  );
 }

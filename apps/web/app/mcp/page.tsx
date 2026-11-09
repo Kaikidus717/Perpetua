@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
-import { CARD, CARD_MUTED, PAGE, TD, TH } from "@/lib/ui";
+import { CARD, CARD_MUTED, INPUT, META, PAGE, TD } from "@/lib/ui";
 import { useState } from "react";
 
 /// One address for every assistant. The site's own API answers MCP on the same origin as this page,
@@ -160,7 +160,7 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
           () => setCopied(false),
         );
       }}
-      className="rounded-md border border-line bg-canvas px-2.5 py-1 text-xs font-medium text-ink hover:border-muted"
+      className="rounded-md border border-line bg-canvas px-2.5 py-1 text-[12px] font-medium text-ink hover:border-muted"
     >
       {copied ? "Copied" : label}
     </button>
@@ -170,7 +170,7 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
 function CodeBlock({ code, label }: { code: string; label: string }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-      <pre className={`${CARD_MUTED} flex-1 overflow-x-auto p-3 font-mono text-xs leading-5`}>
+      <pre className={`${CARD_MUTED} flex-1 overflow-x-auto p-3 font-mono text-[12px] leading-5`}>
         {code}
       </pre>
       <CopyButton text={code} label={label} />
@@ -179,26 +179,36 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
 }
 
 export default function McpPage() {
+  /// The tool list is the longest thing on this page, so it is the one thing worth filtering.
+  const [needle, setNeedle] = useState("");
+  const query = needle.trim().toLowerCase();
+  const shown = query
+    ? TOOLS.filter(
+        (tool) =>
+          tool.name.toLowerCase().includes(query) || tool.what.toLowerCase().includes(query),
+      )
+    : TOOLS;
+
   return (
     <div className={PAGE}>
       <PageHeader
         title="Use with AI"
-        description="Point Claude, Cursor, VS Code or any other AI assistant at Perpetua and it can price what you hold, read how a pool has actually performed and build transactions for you to sign — from the same live data this site uses."
+        description="Point any assistant at Perpetua. It prices positions, reads how a pool actually performed, and builds transactions for you to sign — from the same data this site uses."
       />
 
       <Section title="Connect" description="One address. Nothing to install.">
         <div className="space-y-5">
           <div className={`${CARD} flex flex-col gap-3 p-5 sm:flex-row sm:items-center`}>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted">
+              <div className="text-[12px] font-medium uppercase tracking-wide text-muted">
                 Your Perpetua address
               </div>
-              <div className="mt-1 truncate font-mono text-sm text-ink">{ENDPOINT}</div>
+              <div className="mt-1 truncate font-mono text-[13px] text-ink">{ENDPOINT}</div>
             </div>
             <CopyButton text={ENDPOINT} label="Copy address" />
           </div>
 
-          <ol className={`${CARD_MUTED} space-y-2 p-5 text-sm text-ink`}>
+          <ol className={`${CARD_MUTED} space-y-2 p-5 text-[13px] text-ink`}>
             <li>
               <span className="font-medium">1.</span> Copy the address above.
             </li>
@@ -214,7 +224,7 @@ export default function McpPage() {
           </ol>
 
           <div className={`${CARD} overflow-hidden`}>
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-[13px]">
               <tbody>
                 {CLIENTS.map((client) => (
                   <tr key={client.name} className="border-b border-line last:border-0">
@@ -227,53 +237,76 @@ export default function McpPage() {
           </div>
 
           <div className="space-y-3">
-            <div className="text-sm text-muted">
-              If your assistant takes a config file instead of a menu, paste this in:
-            </div>
-            <CodeBlock code={CONFIG} label="Copy config" />
-            <div className="text-sm text-muted">VS Code wants a slightly different shape:</div>
-            <CodeBlock code={VSCODE_CONFIG} label="Copy config" />
+            {/* Folded away: two blocks of JSON are reference material, not the first thing a reader
+                should meet on a page about using the product with an assistant. */}
+            <details className="rounded-lg border border-line bg-panel/60 p-3">
+              <summary className="w-fit cursor-pointer text-[12px] text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
+                If your assistant takes a config file
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="text-[12px] text-muted">
+                  Paste this into the client&apos;s config:
+                </div>
+                <CodeBlock code={CONFIG} label="Copy config" />
+                <div className="text-[12px] text-muted">
+                  VS Code wants a slightly different shape:
+                </div>
+                <CodeBlock code={VSCODE_CONFIG} label="Copy config" />
+              </div>
+            </details>
           </div>
         </div>
       </Section>
 
       <Section
         title="What your assistant can ask Perpetua"
-        description="Everything this site can do, on request — reading and building, on either network."
+        description="Reading and building, on either network."
       >
-        <div className={`${CARD} overflow-hidden`}>
-          <table className="w-full text-left text-sm">
-            <thead className="bg-panel">
-              <tr>
-                <th className={TH}>Tool</th>
-                <th className={TH}>What it brings back</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TOOLS.map((tool) => (
-                <tr key={tool.name}>
-                  <td className={`${TD} whitespace-nowrap font-mono text-xs`}>{tool.name}</td>
-                  <td className={`${TD} text-muted`}>{tool.what}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <label className="block">
+          <span className="sr-only">Filter tools</span>
+          <input
+            value={needle}
+            onChange={(event) => setNeedle(event.target.value)}
+            placeholder="Filter tools…"
+            type="search"
+            className={INPUT}
+          />
+        </label>
+        <ul className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-xl border border-line bg-panel">
+          {shown.map((tool) => (
+            <li
+              key={tool.name}
+              className="flex flex-col gap-1 p-3 sm:flex-row sm:items-baseline sm:gap-4"
+            >
+              <span className="shrink-0 font-mono text-[12px] text-ink sm:w-56">{tool.name}</span>
+              <span className="text-[12px] leading-5 text-muted">{tool.what}</span>
+            </li>
+          ))}
+        </ul>
+        {shown.length === 0 ? (
+          <p className={META}>No tool matches &ldquo;{needle}&rdquo;.</p>
+        ) : null}
       </Section>
 
-      <Section title="Things worth asking" description="Plain language works.">
-        <div className={`${CARD} space-y-3 p-5`}>
-          <ul className="list-disc space-y-2 pl-5 text-sm text-ink">
+      {/* Folded away: these are examples to reach for once someone has a question, not the shape of
+          the page. The count tells them there is something worth opening. */}
+      <details className={`${CARD} p-4`}>
+        <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <span className="text-[13px] font-semibold text-ink">Things worth asking</span>
+          <span className={META}>plain language works · {PROMPTS.length} examples</span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          <ul className="list-disc space-y-2 pl-5 text-[13px] text-ink">
             {PROMPTS.map((prompt) => (
               <li key={prompt}>{prompt}</li>
             ))}
           </ul>
           <CopyButton text={PROMPTS.join("\n")} label="Copy all prompts" />
         </div>
-      </Section>
+      </details>
 
       <Section title="What you get back">
-        <ul className="space-y-3 text-sm text-ink">
+        <ul className="space-y-3 text-[13px] text-ink">
           <li className={`${CARD_MUTED} p-4`}>
             <span className="font-medium">Your keys never move.</span> Perpetua never asks for a
             private key. When your assistant builds a transaction it comes back unsigned, for your
@@ -293,7 +326,7 @@ export default function McpPage() {
       </Section>
 
       <Section title="Building something instead?">
-        <div className={`${CARD} space-y-3 p-5 text-sm text-ink`}>
+        <div className={`${CARD} space-y-3 p-5 text-[13px] text-ink`}>
           <p>
             Everything your assistant can reach is public, and every answer is available over plain
             HTTP if you would rather fetch it yourself:

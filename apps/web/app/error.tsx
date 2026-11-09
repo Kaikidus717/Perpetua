@@ -1,10 +1,7 @@
 "use client";
 
-import { BUTTON, CARD_MUTED } from "@/lib/ui";
+import { BUTTON, CARD, META } from "@/lib/ui";
 
-/// Route-level boundary. Without it an unexpected render error blanks the whole app instead of the
-/// page that failed. What a visitor gets is a sentence they can act on — the raw error is not
-/// something they can use.
 export default function ErrorBoundary({
   reset,
 }: {
@@ -12,11 +9,14 @@ export default function ErrorBoundary({
   reset: () => void;
 }) {
   return (
-    <div className={`${CARD_MUTED} mx-auto max-w-2xl space-y-4 p-6 text-center`}>
-      <h1 className="text-base font-semibold text-ink">Something went wrong</h1>
-      <p className="text-sm text-muted">
-        This page didn&apos;t finish loading. Reloading usually clears it.
-      </p>
+    <div className={`${CARD} max-w-lg space-y-4 p-5`}>
+      <div className="space-y-1">
+        <h1 className="text-[15px] font-semibold text-ink">This page didn&apos;t finish loading</h1>
+        <p className={`${META} leading-5`}>
+          Reloading usually clears it. If it keeps happening, open Stats — if those figures arrive,
+          the API is fine and this page is the problem.
+        </p>
+      </div>
       <button type="button" onClick={reset} className={BUTTON}>
         Try again
       </button>

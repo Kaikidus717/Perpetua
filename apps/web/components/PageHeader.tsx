@@ -1,10 +1,23 @@
-/// The one page heading used by every route: same size, same width, same alignment. Keeping it in a
-/// component is what makes the pages look like one product instead of five.
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+import { LEDE, TITLE } from "@/lib/ui";
+import type { ReactNode } from "react";
+
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: string;
+  /// At most one primary action. Anything else belongs in the page body, next to what it acts on.
+  actions?: ReactNode;
+}) {
   return (
-    <header className="mx-auto max-w-2xl text-center">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
-      {description ? <p className="mt-2 text-sm leading-6 text-muted">{description}</p> : null}
+    <header className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <h1 className={TITLE}>{title}</h1>
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
+      {description ? <p className={LEDE}>{description}</p> : null}
     </header>
   );
 }

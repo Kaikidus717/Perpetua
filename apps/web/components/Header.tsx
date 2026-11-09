@@ -1,67 +1,76 @@
 "use client";
 
-import { useWalletNetwork } from "@/lib/network";
+import { Logo } from "@/components/Logo";
+import { NetworkToggle } from "@/components/NetworkToggle";
+import { SITE } from "@/lib/site";
 import { CONTAINER } from "@/lib/ui";
-import { useSolanaWallet } from "@/lib/wallet";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-/// Plain nouns a first-time visitor can guess at. The old labels were internal project jargon
-/// ("Explore", "Terminal", "Securitize", "KPI").
-const LINKS = [
+/// Plain nouns a first-time visitor can guess at.
+export const DESTINATIONS = [
   { href: "/", label: "Vaults" },
   { href: "/terminal", label: "Pricing" },
-  { href: "/securitize", label: "Create shares" },
-  { href: "/launch", label: "Launch plan" },
-  { href: "/mcp", label: "Use with AI" },
+  { href: "/launch", label: "Launch" },
+  { href: "/securitize", label: "Shares" },
+  { href: "/mcp", label: "AI" },
   { href: "/kpi", label: "Stats" },
 ];
 
 export function Header() {
   const pathname = usePathname();
-  const wallet = useSolanaWallet();
-  const network = useWalletNetwork(wallet.address);
 
   return (
-    <header className="border-b border-line bg-canvas">
-      <div className={`${CONTAINER} flex min-h-16 flex-wrap items-center justify-between gap-x-6`}>
-        <Link href="/" className="flex items-baseline gap-2 py-4">
-          <span className="text-[15px] font-semibold tracking-tight text-ink">Perpetua</span>
-          <span className="hidden text-xs text-muted sm:inline">the fee-rights exchange</span>
-          {/* The network the connected wallet signs on — the one thing here that is a fact about the
-              visitor rather than about this deployment. It stays hidden until a wallet answers,
-              because a build-time label would be wrong for half the audience: one deployment serves
-              mainnet and devnet at once (pool pricing and launches are mainnet; vaults and share
-              transactions are devnet). The pages spell that out where it changes what you can do. */}
-          {network.label ? (
-            <span
-              title="The network your wallet signs on. Vaults and share transactions are devnet; pool pricing and token launches are mainnet."
-              className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted"
-            >
-              {network.label} wallet
-            </span>
-          ) : null}
+    <header className="sticky top-0 z-30 border-b border-line/70 bg-canvas/80 backdrop-blur-xl">
+      {/* Three columns rather than a space-between row: the destinations keep the centre of the bar no
+          matter how wide the network switch or the wallet chip gets, so nothing nudges the nav
+          sideways while someone is using it. */}
+      <div
+        className={`${CONTAINER} grid h-14 grid-cols-[1fr_auto_1fr] items-center gap-4 md:h-[68px]`}
+      >
+        <Link
+          href="/"
+          aria-label={SITE.name}
+          className="flex shrink-0 items-center gap-2 justify-self-start"
+        >
+          <Logo className="h-6 w-6" />
+          {/* On a phone the mark carries the brand on its own: a 90px wordmark next to a 24px mark and
+              a 152px switch is the definition of clustered. */}
+          <span className="hidden text-[14px] font-semibold tracking-[-0.01em] text-ink sm:inline md:text-[15px]">
+            {SITE.name}
+          </span>
         </Link>
 
-        <nav aria-label="Main" className="flex flex-wrap items-center gap-1 py-2">
-          {LINKS.map((link) => {
+        {/* Centred on a desktop, where a reader looks after the page title. On a phone these live in
+            the bottom bar instead — six destinations never fit a 390px header without shrinking to
+            something nobody can tap. */}
+        <nav aria-label="Main" className="hidden items-center gap-0.5 justify-self-center md:flex">
+          {DESTINATIONS.map((link) => {
             const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
             return (
               <Link
                 key={link.href}
                 href={link.href}
                 aria-current={active ? "page" : undefined}
-                className={`border-b-2 px-3 py-2 text-sm ${
-                  active
-                    ? "border-ink font-medium text-ink"
-                    : "border-transparent text-muted hover:border-line hover:text-ink"
+                className={`relative flex min-h-10 items-center rounded-lg px-3.5 text-[13px] transition-colors duration-150 motion-reduce:transition-none md:text-[14px] ${
+                  active ? "text-ink" : "text-muted hover:text-ink"
                 }`}
               >
                 {link.label}
+                {active ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-x-3 -bottom-[9px] h-[2px] rounded-full bg-accent"
+                  />
+                ) : null}
               </Link>
             );
           })}
         </nav>
+
+        <div className="flex shrink-0 items-center gap-2 justify-self-end">
+          <NetworkToggle />
+        </div>
       </div>
     </header>
   );

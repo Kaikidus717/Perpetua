@@ -1,21 +1,27 @@
+import { H2 } from "@/lib/ui";
 import type { ReactNode } from "react";
 
-/// Every route composes sections through this, so each heading is the same size and the same
-/// distance from its content.
 export function Section({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="space-y-4">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="text-base font-semibold text-ink">{title}</h2>
-        {description ? <p className="mt-1 text-sm leading-6 text-muted">{description}</p> : null}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div className="space-y-1">
+          <h2 className={H2}>{title}</h2>
+          {description ? (
+            <p className="max-w-xl text-[12px] leading-5 text-muted">{description}</p>
+          ) : null}
+        </div>
+        {action}
       </div>
       {children}
     </section>

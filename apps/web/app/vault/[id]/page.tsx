@@ -1,29 +1,59 @@
 "use client";
 
-import { PageHeader } from "@/components/PageHeader";
+import { Meter } from "@/components/Meter";
 import { Section } from "@/components/Section";
 import { SellShares } from "@/components/SellShares";
 import { Spinner } from "@/components/Spinner";
-import { Stat } from "@/components/Stat";
 import { VaultActions } from "@/components/VaultActions";
 import { api } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl } from "@/lib/format";
 import { useWalletNetwork } from "@/lib/network";
-import { CARD, CARD_MUTED, LINK, PAGE, TD, TH } from "@/lib/ui";
+import {
+  BUTTON,
+  CARD,
+  CARD_MUTED,
+  CHIP,
+  EYEBROW,
+  LEDE,
+  LINK,
+  META,
+  NUM_LG,
+  PAGE,
+  TITLE,
+} from "@/lib/ui";
 import { useSolanaWallet } from "@/lib/wallet";
+import { SHARE_SUPPLY } from "@perpetua/shared";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 /// Stakes and claims land while the page is open, so keep re-reading.
 const LIVE_MS = 15_000;
 
+/// Balances arrive in base units (1,000,000 shares × 10^6). A raw integer beside the word "shares"
+/// states a number with no unit, so it is converted here and labelled where it is printed.
+function wholeShares(base: string): string {
+  try {
+    const value = (BigInt(base) * 1_000_000n) / SHARE_SUPPLY;
+    return value.toLocaleString("en-US");
+  } catch {
+    return base;
+  }
+}
+
+/// The same figure as a percentage of the 1,000,000 shares that exist.
+function stakedPercent(base: string): number {
+  try {
+    return Number((BigInt(base) * 10_000n) / SHARE_SUPPLY) / 100;
+  } catch {
+    return 0;
+  }
+}
+
 export default function VaultPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
 
-  /// Which network the visitor's wallet signs on, said once at the top of the page. Every action here
-  /// is a devnet transaction, because that is the only cluster the vault program is deployed on — so
-  /// it is worth knowing before the buttons further down stop making sense.
   const wallet = useSolanaWallet();
   const network = useWalletNetwork(wallet.address);
 
@@ -43,124 +73,160 @@ export default function VaultPage() {
   if (vault.isError) {
     return (
       <div className={PAGE}>
-        <div className={`${CARD_MUTED} px-6 py-12 text-center text-sm text-muted`}>
-          We couldn&apos;t find that vault. Check the address and try again.
+        <div className={`${CARD_MUTED} max-w-lg p-4`}>
+          <p className="text-[13px] text-ink">We couldn&apos;t find that vault.</p>
+          <p className={`${META} mt-1`}>
+            Check the address — a vault link ends in its on-chain address, not its name.
+          </p>
         </div>
       </div>
     );
   }
 
   const address = vault.data?.vault.address ?? id;
+  const data = vault.data?.vault;
 
   return (
     <div className={PAGE}>
-      <PageHeader
-        title="Vault"
-        description="Hold shares to earn a slice of the fees this position keeps producing."
-      />
-
-      <div className="flex flex-wrap items-center gap-3">
+      <header className="space-y-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className={TITLE}>Vault</h1>
+          {vault.isPending ? <Spinner label="Loading this vault" /> : null}
+          {network.label ? <span className={CHIP}>{network.label} wallet</span> : null}
+          {/* The next thing most people want from a vault they own: a way into the share flow. */}
+          <Link href="/securitize" className={`${BUTTON} ml-auto`}>
+            Create shares
+          </Link>
+        </div>
         <a
           href={explorerUrl(address)}
           target="_blank"
           rel="noreferrer"
-          className={`break-all font-mono text-sm ${LINK}`}
+          className={`break-all font-mono text-[12px] text-muted ${LINK}`}
         >
-          {address}
+          {address} ↗
         </a>
-        {vault.isPending ? <Spinner label="Loading this vault" /> : null}
-      </div>
-
-      {network.label ? (
-        <p className="text-xs text-muted">
-          Your wallet is on {network.label}.{" "}
-          {network.cluster === "mainnet-beta"
-            ? "Staking, harvesting and selling shares need devnet, because that is where the vault program lives."
-            : "Staking, harvesting and selling shares all work here."}
+        <p className={LEDE}>
+          Hold shares to earn a slice of the fees this locked position keeps producing.
         </p>
-      ) : null}
+        {/* A wallet on the wrong chain cannot sign anything below, and finding that out at the wallet
+            is worse than reading it here. */}
+        {network.cluster === "mainnet-beta" ? (
+          <p className={`${META} text-warn`}>
+            Staking, harvesting and selling shares need devnet — that is the only cluster the vault
+            program is deployed on.
+          </p>
+        ) : null}
+      </header>
 
-      {vault.data ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Shares staked" value={vault.data.vault.totalStaked} />
-          <Stat label="Fees claimed A" value={vault.data.vault.totalClaimedA} />
-          <Stat label="Fees claimed B" value={vault.data.vault.totalClaimedB} />
-          <Stat label="Share mint" value={shortAddress(vault.data.vault.shareMint)} />
-        </div>
-      ) : null}
-
-      {vault.data ? (
-        <Section title="Where the money comes from" description="Every address is public.">
-          <div className={`${CARD} overflow-hidden`}>
-            <table className="w-full text-left text-sm">
-              <thead className="bg-panel">
-                <tr>
-                  <th className={TH}>Account</th>
-                  <th className={`${TH} text-right`}>Address</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { label: "Pool", value: vault.data.vault.pool },
-                  { label: "Position", value: vault.data.vault.position },
-                  { label: "Creator", value: vault.data.vault.creator },
-                ].map((row) => (
-                  <tr key={row.label}>
-                    <td className={TD}>{row.label}</td>
-                    <td className={`${TD} text-right`}>
-                      <a
-                        href={explorerUrl(row.value)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`font-mono text-xs ${LINK}`}
-                      >
-                        {shortAddress(row.value)}
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {data ? (
+        <section className="grid gap-4 md:grid-cols-2">
+          <div className={`${CARD} p-4`}>
+            <p className={EYEBROW}>Shares staked</p>
+            <p className={`${NUM_LG} mt-2`}>{wholeShares(data.totalStaked)}</p>
+            <p className={`${META} mt-2`}>of 1,000,000 issued</p>
+            <div className="mt-2">
+              <Meter
+                value={stakedPercent(data.totalStaked)}
+                label={`${Math.round(stakedPercent(data.totalStaked))} percent of the shares are staked`}
+                width="w-24"
+              />
+            </div>
           </div>
-        </Section>
+          <div className={`${CARD} p-4`}>
+            <p className={EYEBROW}>Fees claimed A / B</p>
+            <p className="tnum mt-2 text-[15px] text-ink">
+              {data.totalClaimedA} / {data.totalClaimedB}
+            </p>
+            <p className={`${META} mt-1`}>base units of each fee token</p>
+            <p className={`${META} mt-3`}>
+              Share mint{" "}
+              <a
+                href={explorerUrl(data.shareMint)}
+                target="_blank"
+                rel="noreferrer"
+                className={`font-mono ${LINK}`}
+              >
+                {shortAddress(data.shareMint)} ↗
+              </a>
+            </p>
+          </div>
+        </section>
       ) : null}
+
+      <VaultActions vault={address} />
+
+      {data ? <SellShares shareMint={data.shareMint} pool={data.pool} /> : null}
 
       <Section title="Activity" description="Stakes, harvests and claims, as they land on-chain.">
         {events.isPending ? (
-          <p className="flex items-center gap-2 text-sm text-muted">
+          <p className={`${META} flex items-center gap-2`}>
             <Spinner label="Loading activity" />
             Loading activity…
           </p>
         ) : null}
-        {events.data && events.data.events.length === 0 ? (
-          <p className="text-sm text-muted">Nothing has happened yet.</p>
+        {events.data?.events.length === 0 ? (
+          <p className={META}>Nothing has happened yet. Stake, then crank and harvest.</p>
         ) : null}
         {events.data && events.data.events.length > 0 ? (
-          <ul className={`${CARD} divide-y divide-line`}>
+          <ol className={`${CARD} divide-y divide-line`}>
             {events.data.events.map((event) => (
-              <li key={`${event.signature}-${event.name}`} className="px-4 py-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-medium text-ink">{event.name}</span>
+              <li
+                key={`${event.signature}-${event.name}`}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink/40"
+                  />
+                  <span className="truncate text-[13px] text-ink">{event.name}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-3">
+                  <span className={`${META} tnum`}>slot {event.slot}</span>
                   <a
                     href={txUrl(event.signature)}
                     target="_blank"
                     rel="noreferrer"
-                    className={`font-mono text-xs ${LINK}`}
+                    className={`font-mono text-[11px] text-muted ${LINK}`}
                   >
-                    {shortAddress(event.signature)}
+                    {shortAddress(event.signature)} ↗
                   </a>
-                </div>
-                <div className="tnum mt-1 text-xs text-muted">slot {event.slot}</div>
+                </span>
               </li>
             ))}
-          </ul>
+          </ol>
         ) : null}
       </Section>
 
-      <VaultActions vault={address} />
-
-      {vault.data ? (
-        <SellShares shareMint={vault.data.vault.shareMint} pool={vault.data.vault.pool} />
+      {/* The three accounts, folded away: they are the proof behind the figures above, not the story. */}
+      {data ? (
+        <details className={`${CARD} p-4 text-[13px]`}>
+          <summary className="w-fit cursor-pointer text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
+            The accounts behind this vault
+          </summary>
+          <dl className="mt-3 divide-y divide-line">
+            {[
+              { label: "Pool", value: data.pool },
+              { label: "Position", value: data.position },
+              { label: "Creator", value: data.creator },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-4 py-2">
+                <dt className="text-muted">{row.label}</dt>
+                <dd>
+                  <a
+                    href={explorerUrl(row.value)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`font-mono text-[11px] ${LINK}`}
+                  >
+                    {shortAddress(row.value)} ↗
+                  </a>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       ) : null}
     </div>
   );

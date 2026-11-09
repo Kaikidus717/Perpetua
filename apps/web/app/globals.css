@@ -2,8 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The palette, in channels so Tailwind's `/opacity` modifiers keep working.
+
+   Two tiers of background, as Apple's dark-mode guidance describes: `canvas` is the base (it recedes)
+   and `panel` is elevated (it comes forward). The text is a warm paper rather than pure white, and the
+   black is a warm near-black rather than #000 — pure black and pure white are what make a dark
+   interface feel like a terminal rather than a product.
+
+   `accent` means exactly one thing: "you can act on this". Buttons, the active destination, sliders,
+   focus rings, the chart line. It is never used for body text or for decoration, so a reader can trust
+   it as a signal. `warn` is the only other hue and is reserved for things that block an action. */
 :root {
   color-scheme: light;
+  --canvas: 250 248 245; /* #faf8f5 */
+  --ink: 26 22 19; /* #1a1613 */
+  --muted: 108 100 92; /* #6c645c */
+  --line: 226 220 212; /* #e2dcd4 */
+  --panel: 255 253 250; /* #fffdfa */
+  --accent: 176 74 42; /* #b04a2a — darker on light, for contrast */
+  --accent-2: 47 124 138; /* #2f7c8a — cool counterweight to the terracotta */
+  --warn: 154 96 12; /* #9a600c */
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: 12 10 9; /* #0c0a09 — warm near-black, not #000 */
+  --ink: 246 241 233; /* #f6f1e9 — warm paper, 17.9:1 on canvas */
+  --muted: 167 158 147; /* #a79e93 — 8.4:1 on canvas, 7.5:1 on panel */
+  --line: 42 37 33; /* #2a2521 */
+  --panel: 22 19 17; /* #161311 — elevated */
+  --accent: 224 121 90; /* #e0795a — terracotta, 6.4:1 on canvas */
+  --accent-2: 111 179 192; /* #6fb3c0 — teal, 8.6:1 on canvas */
+  --warn: 232 176 75; /* #e8b04b — gold */
+}
+
+/* A dark screen has to claim the document background too: the area behind the header, the overscroll
+   gutter and the region past the last element are all painted by `html`, not by the page. */
+html:has([data-theme="dark"]) {
+  background: rgb(var(--canvas));
 }
 
 html {
@@ -11,18 +47,165 @@ html {
 }
 
 body {
-  background: #ffffff;
-  color: #18181b;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   color: inherit;
 }
 
+/* Selecting text is the one place the accent sits behind words, and it is a browser-level affordance
+   rather than part of the interface. */
+::selection {
+  background: rgb(var(--accent) / 0.3);
+}
+
 /* Figures sit in columns and do not jitter as values tick over. */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/* One entrance for a page: 160ms, opacity plus a 4px rise. The house limit for motion is a 120–160ms
+   ease-out with no more than a few pixels of travel, and this is the only place a whole screen moves. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: rise 160ms ease-out both;
+}
+
+/* Disclosures get a chevron that turns when they open, so a closed one reads as closed at a glance
+   rather than as a heading with a stray word under it. */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details > summary::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-right: 1.5px solid rgb(var(--muted));
+  border-bottom: 1.5px solid rgb(var(--muted));
+  transform: translateY(-1px) rotate(-45deg);
+  transition: transform 150ms ease-out;
+}
+details[open] > summary::before {
+  transform: translateY(1px) rotate(45deg);
+}
+
+/* Range inputs. Drawn here rather than with a component library so one control looks native on both
+   platforms and in both themes: a 44px-tall hit area (the touch target), a 4px track, a 20px thumb.
+   The filled portion is a gradient the component sets inline as `backgroundImage`, sized to the track
+   by `background-size` — which avoids styling pseudo-elements from React. */
+input[type="range"].track {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+input[type="range"].track::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+input[type="range"].track::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+  border-radius: 999px;
+  border: 2px solid rgb(var(--canvas));
+  background: rgb(var(--accent));
+  /* Depth carries an offset and a soft blur; a zero-offset halo around the thumb is decoration. */
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+input[type="range"].track::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+input[type="range"].track::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgb(var(--canvas));
+  background: rgb(var(--accent));
+}
+
+/* The thumb is the focus indicator: a ring around the whole 44px row would read as a text field. */
+input[type="range"].track:focus-visible {
+  outline: none;
+}
+input[type="range"].track:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px rgb(var(--canvas)), 0 0 0 4px rgb(var(--accent));
+}
+input[type="range"].track:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px rgb(var(--canvas)), 0 0 0 4px rgb(var(--accent));
+}
+
+/* Browser surfaces. The parts we did not draw still carry the design: a caret, a text selection, a
+   scrollbar. They ship with defaults that belong to no design system, and theming them is the cheapest
+   signal that a page was built rather than assembled. */
+html {
+  caret-color: rgb(var(--accent-2));
+  scrollbar-color: rgb(var(--line)) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgb(var(--canvas));
+  border-radius: 999px;
+  background: rgb(var(--line));
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted) / 0.6);
+}
+
+/* Every animation in this app is a CSS transition of opacity or transform, and none of them run when
+   the reader has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

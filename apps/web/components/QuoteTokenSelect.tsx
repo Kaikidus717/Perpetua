@@ -45,7 +45,7 @@ export function QuoteTokenSelect({
   const selected = preset ? preset.mint : CUSTOM;
 
   return (
-    <div className="space-y-2 text-sm">
+    <div className="space-y-2 text-[13px]">
       <span className="text-ink">{label}</span>
       <div className="flex flex-wrap gap-2">
         {QUOTE_TOKENS.map((token) => {
@@ -56,14 +56,14 @@ export function QuoteTokenSelect({
               type="button"
               onClick={() => onChange(token.mint)}
               title={token.note}
-              className={`rounded-md border px-3 py-1.5 text-sm ${
+              className={`rounded-md border px-3 py-1.5 text-[13px] transition-colors duration-150 motion-reduce:transition-none ${
                 active
-                  ? "border-ink bg-ink text-white"
+                  ? "border-ink bg-ink text-canvas"
                   : "border-line bg-canvas text-ink hover:border-muted"
               }`}
             >
               {token.label}
-              <span className={active ? "ml-2 text-white/60" : "ml-2 text-muted"}>
+              <span className={active ? "ml-2 text-canvas/60" : "ml-2 text-muted"}>
                 {token.note.split(" — ")[0]}
               </span>
             </button>
@@ -72,9 +72,9 @@ export function QuoteTokenSelect({
         <button
           type="button"
           onClick={() => onChange("")}
-          className={`rounded-md border px-3 py-1.5 text-sm ${
+          className={`rounded-md border px-3 py-1.5 text-[13px] transition-colors duration-150 motion-reduce:transition-none ${
             selected === CUSTOM
-              ? "border-ink bg-ink text-white"
+              ? "border-ink bg-ink text-canvas"
               : "border-line bg-canvas text-ink hover:border-muted"
           }`}
         >
@@ -90,7 +90,7 @@ export function QuoteTokenSelect({
           className={`${INPUT} font-mono`}
         />
       ) : (
-        <p className="font-mono text-xs text-muted">{shortAddress(value)}</p>
+        <p className="font-mono text-[12px] text-muted">{shortAddress(value)}</p>
       )}
     </div>
   );

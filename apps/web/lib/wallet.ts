@@ -15,9 +15,6 @@ export interface SolanaProvider {
   removeEventListener?(event: string, handler: () => void): void;
 }
 
-/// What Solana wallets put on `window`. They all expose the same provider shape; they just disagree
-/// about where to put it. `window.solana` is the de-facto standard, so it wins when present, and the
-/// named slots below cover the cases where a different extension claimed it first.
 interface WalletGlobals {
   solana?: SolanaProvider;
   phantom?: { solana?: SolanaProvider };
@@ -30,14 +27,6 @@ interface WalletGlobals {
 /// this role: they hold no Solana keys and cannot sign a Solana transaction.
 export const SUPPORTED_WALLETS = "Phantom, Solflare, Backpack or Glow";
 
-/// Wallets are other people's code injected into our page, and reading them has to be assumed unsafe.
-/// Some extensions hand out a `Proxy` whose frozen `on` method is answered with a *different*
-/// function, and the JavaScript engine throws from inside the reader's frame:
-///
-///   'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy
-///   target but the proxy did not return its actual value
-///
-/// A wallet that behaves like that should cost the visitor a connected wallet — never the page.
 function read<T>(value: () => T): T | undefined {
   try {
     return value();

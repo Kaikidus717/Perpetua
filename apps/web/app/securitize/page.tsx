@@ -22,9 +22,8 @@ export default function SecuritizePage() {
   const [manual, setManual] = useState("");
   const target = wallet.address ?? (manual.trim() || null);
 
-  /// Which cluster the wallet lives on, and then its positions *there*. A wallet exists on one cluster
-  /// only, so scanning the other would always come back empty — which reads as "you own nothing"
-  /// rather than "wrong network".
+  const isOwner = Boolean(wallet.address) && target === wallet.address;
+
   const location = useQuery({
     queryKey: ["where", target],
     queryFn: () => (target ? api.where(target) : Promise.reject(new Error("no wallet"))),
@@ -41,11 +40,6 @@ export default function SecuritizePage() {
 
   const position = positions.data?.positions[0];
 
-  /// The same wallet's *vaults* — the other half of the picture, and the half this page used to miss.
-  /// Turning a position into shares hands that position to a vault, so it stops belonging to the
-  /// wallet and stops appearing in the scan above. A wallet that has securitized everything therefore
-  /// looks empty here, and the page answered that with "No locked position yet?" — as if the vault it
-  /// had just created never happened. Asking for its vaults says what actually exists.
   const vaults = useQuery({ queryKey: ["vaults"], queryFn: () => api.vaults() });
   const mine = (vaults.data?.vaults ?? []).filter(
     (entry) => Boolean(wallet.address) && entry.creator === wallet.address,
@@ -110,9 +104,6 @@ export default function SecuritizePage() {
           tokenAProgram: position.tokenAProgram,
           tokenBProgram: position.tokenBProgram,
         },
-        /// The vault program is deployed on devnet, so this is a devnet transaction whatever the
-        /// deploy's default cluster is. A mainnet wallet is told why it cannot take this step,
-        /// rather than being handed a transaction that cannot succeed.
         cluster ?? "devnet",
       );
       setResult(created);
@@ -130,14 +121,14 @@ export default function SecuritizePage() {
   return (
     <div className={PAGE}>
       <PageHeader
-        title="Create shares"
-        description="Turn a locked pool position into 1,000,000 tradable shares. A vault takes custody of the position so it can never be pulled out, the shares land in your wallet, and every fee the pool keeps earning then belongs to whoever holds them."
+        title="Turn a locked position into 1,000,000 shares"
+        description="A vault takes custody of the position so it can never be pulled out. The shares land in your wallet, and every fee the pool keeps earning then belongs to whoever holds them."
       />
 
       <section className="flex flex-wrap items-center gap-3">
         {wallet.address ? (
           <>
-            <span className="font-mono text-sm text-ink">{shortAddress(wallet.address)}</span>
+            <span className="font-mono text-[13px] text-ink">{shortAddress(wallet.address)}</span>
             {cluster ? (
               <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted">
                 {cluster === "mainnet-beta" ? "mainnet" : cluster}
@@ -157,13 +148,13 @@ export default function SecuritizePage() {
           onChange={(event) => setManual(event.target.value)}
           aria-label="Wallet address to scan for positions"
           placeholder="or paste a wallet address to scan"
-          className={`${INPUT_MONO} min-w-[20rem] flex-1`}
+          className={`${INPUT_MONO} min-w-0 flex-1`}
         />
       </section>
 
-      {wallet.error ? <p className="text-sm text-warn">{wallet.error}</p> : null}
+      {wallet.error ? <p className="text-[13px] text-warn">{wallet.error}</p> : null}
       {!wallet.available && !manual ? (
-        <p className="text-sm text-muted">
+        <p className="text-[13px] text-muted">
           No wallet found. Paste an address above, or install {SUPPORTED_WALLETS}.
         </p>
       ) : null}
@@ -171,7 +162,7 @@ export default function SecuritizePage() {
       {/* A mainnet wallet is a real, supported case — this app serves both networks — so instead of
           offering a button that cannot work, say which half works where and how to get to the other. */}
       {cluster === "mainnet-beta" ? (
-        <div className={`${CARD_MUTED} space-y-3 p-5 text-sm`}>
+        <div className={`${CARD_MUTED} space-y-3 p-5 text-[13px]`}>
           <p className="font-medium text-ink">
             This wallet is on {networkLabel(cluster)}, and the share program is not deployed there
             yet.
@@ -211,16 +202,19 @@ export default function SecuritizePage() {
         >
           <div className={`${CARD} divide-y divide-line`}>
             {mine.map((entry) => (
-              <div key={entry.address} className="space-y-1 p-4 text-sm">
+              <div key={entry.address} className="space-y-1 p-4 text-[13px]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Link href={`/vault/${entry.address}`} className={`font-mono text-xs ${LINK}`}>
+                  <Link
+                    href={`/vault/${entry.address}`}
+                    className={`font-mono text-[12px] ${LINK}`}
+                  >
                     {shortAddress(entry.address)} ↗
                   </Link>
                   <span className="text-muted">
                     {wholeShares(entry.totalStaked)} of 1,000,000 shares staked
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-muted">
                   <a
                     href={explorerUrl(entry.position, explorerCluster(cluster))}
                     target="_blank"
@@ -245,14 +239,19 @@ export default function SecuritizePage() {
         title="Positions held by this wallet"
         description="Only a position that is permanently locked can back shares. Once a position is securitized its vault holds it, so it stops being one of this wallet's."
       >
+        {!target ? (
+          <p className="text-[13px] text-muted">
+            Connect a wallet, or paste an address above, to see what it holds.
+          </p>
+        ) : null}
         {positions.isPending && target ? (
-          <p className="flex items-center gap-2 text-sm text-muted">
+          <p className="flex items-center gap-2 text-[13px] text-muted">
             <Spinner label="Scanning this wallet" />
             Scanning this wallet for locked positions…
           </p>
         ) : null}
         {positions.data && positions.data.positions.length === 0 ? (
-          <p className="text-sm text-muted">
+          <p className="text-[13px] text-muted">
             {mine.length > 0
               ? `No positions left in this wallet — the ${mine.length === 1 ? "one you securitized is" : "ones you securitized are"} held by the vault${mine.length === 1 ? "" : "s"} above, which is what stops the fees from walking away. Create another position below whenever you want a second fee engine.`
               : "No locked positions found for this wallet."}
@@ -264,35 +263,35 @@ export default function SecuritizePage() {
               href={explorerUrl(position.address)}
               target="_blank"
               rel="noreferrer"
-              className={`break-all font-mono text-sm ${LINK}`}
+              className={`break-all font-mono text-[13px] ${LINK}`}
             >
               {position.address}
             </a>
-            <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="grid gap-3 text-[13px] sm:grid-cols-3">
               <div>
-                <div className="text-xs text-muted">Unlocked</div>
+                <div className="text-[12px] text-muted">Unlocked</div>
                 <div className="tnum mt-0.5 text-ink">{position.unlockedLiquidity}</div>
               </div>
               <div>
-                <div className="text-xs text-muted">Vested</div>
+                <div className="text-[12px] text-muted">Vested</div>
                 <div className="tnum mt-0.5 text-ink">{position.vestedLiquidity}</div>
               </div>
               <div>
-                <div className="text-xs text-muted">Permanent lock</div>
+                <div className="text-[12px] text-muted">Permanent lock</div>
                 <div className="tnum mt-0.5 text-ink">{position.permanentLockedLiquidity}</div>
               </div>
             </div>
             {cluster === "mainnet-beta" ? (
-              <p className="text-sm text-warn">
+              <p className="text-[13px] text-warn">
                 This wallet is on {networkLabel(cluster)}. Positions here cannot be turned into
                 shares yet — the vault program is on devnet. Launching a token on mainnet does work,
                 and so does pricing.
               </p>
             ) : null}
             {check?.eligible ? (
-              <p className="text-sm text-ink">Eligible for securitization.</p>
+              <p className="text-[13px] text-ink">Eligible for securitization.</p>
             ) : (
-              <p className="text-sm text-warn">
+              <p className="text-[13px] text-warn">
                 Not eligible: {check?.reasons.join(", ")} — split the locked part first.
               </p>
             )}
@@ -315,28 +314,35 @@ export default function SecuritizePage() {
           <button
             type="button"
             onClick={() => void runSecuritize()}
-            disabled={busy || !check?.eligible || cluster === "mainnet-beta"}
+            disabled={busy || !check?.eligible || cluster === "mainnet-beta" || !isOwner}
             className={BUTTON_PRIMARY}
           >
             {busy ? "Waiting for signature…" : "Create shares"}
           </button>
+          {!isOwner ? (
+            <p className="text-[13px] text-muted">
+              Only the wallet that owns this position can turn it into shares — the vault takes
+              custody of it, so the owner has to sign. Connect that wallet (or clear the pasted
+              address) to continue.
+            </p>
+          ) : null}
           {cluster ? (
-            <p className="text-sm text-muted">
+            <p className="text-[13px] text-muted">
               {cluster === "mainnet-beta"
                 ? `This wallet is on ${networkLabel(cluster)}. Creating shares needs the vault program, which is deployed on devnet only — so this button waits until this wallet is on devnet. Launching on mainnet is unaffected.`
                 : `This wallet is on ${networkLabel(cluster)}, where the vault program lives. Creating the shares is a ${networkLabel(cluster)} transaction.`}
             </p>
           ) : null}
-          {txError ? <p className="text-sm text-warn">{txError}</p> : null}
+          {txError ? <p className="text-[13px] text-warn">{txError}</p> : null}
           {result ? (
-            <div className={`${CARD_MUTED} space-y-1 p-4 text-sm`}>
+            <div className={`${CARD_MUTED} space-y-1 p-4 text-[13px]`}>
               <p className="text-ink">Vault created.</p>
               <p className="text-ink">Your share token</p>
               <a
                 href={explorerUrl(result.shareMint)}
                 target="_blank"
                 rel="noreferrer"
-                className={`break-all font-mono text-xs ${LINK}`}
+                className={`break-all font-mono text-[12px] ${LINK}`}
               >
                 {result.shareMint} ↗
               </a>
@@ -346,7 +352,7 @@ export default function SecuritizePage() {
                   href={txUrl(result.signature)}
                   target="_blank"
                   rel="noreferrer"
-                  className={`font-mono text-xs ${LINK}`}
+                  className={`font-mono text-[12px] ${LINK}`}
                 >
                   {shortAddress(result.signature)} ↗
                 </a>
@@ -378,7 +384,7 @@ export default function SecuritizePage() {
           </section>
 
           <Section title="What happens next">
-            <ol className="list-decimal space-y-2 pl-5 text-sm text-ink">
+            <ol className="list-decimal space-y-2 pl-5 text-[13px] text-ink">
               <li>
                 Your locked position is handed to a vault — a contract that holds it and can never
                 give it back, not even to you. That is what stops the fees from being taken away.

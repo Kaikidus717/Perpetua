@@ -6,9 +6,6 @@ import { type SolanaProvider, providerAddress } from "./wallet";
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.devnet.solana.com";
 
-/// The RPC the browser itself talks to when it has to broadcast a signed transaction. It has to match
-/// the cluster the transaction was built for — a devnet transaction sent to a mainnet RPC is simply
-/// rejected — so it is chosen per call rather than once at build time.
 const RPC_URLS: Record<string, string> = {
   devnet: RPC_URL,
   "mainnet-beta": process.env.NEXT_PUBLIC_RPC_URL_MAINNET ?? "https://api.mainnet-beta.solana.com",
@@ -51,9 +48,6 @@ async function post<T>(path: string, body: unknown, cluster?: string): Promise<T
   return payload as T;
 }
 
-/// Reading a method off a wallet can throw before it is ever called: some extensions hand out a
-/// `Proxy` that refuses one of these properties. Reading is guarded; calling is not, on purpose, so
-/// that "the user rejected the request" still reaches the visitor as a rejection.
 function method<K extends "signAndSendTransaction" | "signTransaction">(
   provider: SolanaProvider,
   name: K,
@@ -70,11 +64,6 @@ function method<K extends "signAndSendTransaction" | "signTransaction">(
 /// here is never mistaken for an unreachable RPC in the catch below.
 const CLUSTER_REFUSED = "the chain refused this transaction";
 
-/// Simulates the transaction against the cluster it was built for *before* any wallet is asked to
-/// sign it. A wallet extension can only report a failure that happens inside it — Phantom's words are
-/// "Unexpected error" — so the one place that can name the real cause is the cluster, which answers
-/// with the program's own logs. A simulation that cannot be *reached* (the RPC is down, rate-limited)
-/// says nothing about the transaction, so it is skipped rather than reported as a failure.
 async function preflight(transaction: Transaction, cluster?: string): Promise<void> {
   try {
     const connection = new Connection(rpcUrl(cluster), "confirmed");
@@ -98,9 +87,6 @@ function expired(detail: string): boolean {
   );
 }
 
-/// Nobody has signed yet, so the stamp can be replaced without breaking anything. A partially signed
-/// transaction — a launch, a locked position — cannot be re-stamped: the signatures already on it
-/// cover the old stamp.
 function untouched(transaction: Transaction): boolean {
   return transaction.signatures.every((entry) => entry.signature === null);
 }
@@ -133,11 +119,6 @@ async function broadcast(
   throw new Error("wallet cannot sign transactions");
 }
 
-/// What to say when a wallet will not sign a transaction the cluster accepts. That combination has
-/// one common cause: the wallet is switched to a different network, so a devnet transaction dies
-/// inside an extension sitting on mainnet, reported as a generic failure. Naming the network and the
-/// three clicks that change it is the difference between a dead end and a fix. A plain rejection is
-/// passed through untouched — "the user rejected the request" is an answer, not a puzzle.
 function refusal(cause: unknown, cluster?: string): unknown {
   const text = cause instanceof Error ? cause.message : String(cause ?? "no reason given");
   if (/reject|denied|cancel|declin|refus/i.test(text)) return cause;
@@ -163,10 +144,6 @@ async function send(
     return await broadcast(provider, transaction, cluster);
   } catch (cause) {
     const text = cause instanceof Error ? cause.message : String(cause ?? "");
-    /// A transaction nobody has signed yet, refused only because its stamp went stale, is re-offered
-    /// with a fresh stamp: that is what turns "the first click did nothing" into one click, and why
-    /// clicking twice used to be the workaround. A partially signed one cannot be re-stamped, so it is
-    /// reported as expired and the reader is told to click once more.
     if (expired(text) && untouched(transaction)) {
       try {
         await restamp(transaction, cluster);
@@ -299,15 +276,6 @@ export interface SalePreset {
   baseFactor: string;
 }
 
-/// Creates the SPL mint a launch needs. The mint keypair is generated here, signs, and its public
-/// key is returned so the launch can reference it.
-/// Mints a plain SPL token. `cluster` decides which network it is minted on, so a creator on mainnet
-/// gets a mainnet mint.
-///
-/// This is **not** part of the launch flow: Meteora's DBC pool creation allocates the base mint itself
-/// (`initialize_virtual_pool_with_spl_token`), so a launch must be given a fresh keypair whose account
-/// does not exist yet. Creating the token first makes the launch fail on-chain with "account already in
-/// use". Kept for flows that want a bare mint without a pool.
 export async function createBaseMint(
   provider: SolanaProvider,
   decimals: number,
@@ -407,17 +375,10 @@ export interface LaunchInput {
   creatorPermanentLockedLiquidityPercentage: number;
 }
 
-/// Deploys the financeable DBC launch. The config account is generated here and signs; so does the
-/// base mint's keypair, because DBC creates that mint as part of pool creation. `cluster` is
-/// the network the pool is created on — Meteora's DBC and DAMM v2 programs run on both devnet and
-/// mainnet, so a creator with a mainnet wallet launches on mainnet.
 export async function deployLaunch(
   provider: SolanaProvider,
   input: LaunchInput,
   cluster?: string,
-  /// The base mint's keypair, which must be a *fresh* one: DBC allocates the mint account during pool
-  /// creation, so it has to sign — and passing an existing mint is what makes a launch fail with
-  /// "account already in use".
   baseMintKeypair?: Keypair,
 ): Promise<{ config: string; pool: string; signature: string }> {
   const creator = requirePublicKey(provider);
@@ -443,14 +404,6 @@ export async function deployLaunch(
   return { config: config.publicKey.toBase58(), pool, signature };
 }
 
-/// Adds real trading volume on this vault's pool, so the crank that follows has fees to sweep and the
-/// harvest after it has something to pay. A locked position only ever earns from swaps, so a pool
-/// nobody trades makes both buttons honest no-ops — which is what "no fees are ready to harvest"
-/// means, and what makes a demo of them unsatisfying.
-///
-/// Devnet only, and only against the wallet's own pool: whoever opened the pool still holds its
-/// token's mint authority, so it can mint itself something to trade. It costs the wallet a little SOL
-/// and a little of its own token, and it leaves the locked position a real fee.
 export async function warmPool(
   provider: SolanaProvider,
   vault: string,
@@ -484,10 +437,6 @@ export interface LockedPositionResult {
   signature: string;
 }
 
-/// Creates a fresh DAMM v2 pool whose initial position is **permanently locked** and owned by the
-/// connected wallet, so a wallet that holds nothing has something to securitize. Two transactions:
-/// the mints (signed by the two fresh mint keypairs), then the pool (signed by the fresh NFT keypair).
-/// Works on devnet and mainnet alike — the wallet signs, so no key ever leaves it.
 export async function createLockedPosition(
   provider: SolanaProvider,
   cluster?: string,
@@ -521,9 +470,6 @@ export async function createLockedPosition(
   createTx.partialSign(positionNft);
   const signature = await send(provider, createTx, cluster);
 
-  /// Wait for it to land. The caller rescans the wallet the instant this returns, and a wallet that
-  /// only *sent* the transaction would leave that scan looking at a chain where the position does not
-  /// exist yet — which reads as "nothing was created".
   await new Connection(rpcUrl(cluster), "confirmed").confirmTransaction(signature, "confirmed");
 
   return {

@@ -21,6 +21,14 @@ export function compactUsd(value: number | undefined): string {
   }).format(value);
 }
 
+export function money(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return UNKNOWN;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
+  if (value >= 1) return `$${Math.round(value)}`;
+  return `$${value.toFixed(2)}`;
+}
+
 export function pct(value: number | undefined, digits = 2): string {
   if (value === undefined || !Number.isFinite(value)) return UNKNOWN;
   return `${(value * 100).toFixed(digits)}%`;
@@ -46,22 +54,12 @@ function clusterFromRpc(endpoint: string): Cluster {
   return "mainnet";
 }
 
-/// The cluster this build is wired to, read from the RPC the browser talks to. It is the right answer
-/// for everything the app itself creates — vaults, share mints, positions, transactions — because
-/// those were made on that cluster and exist nowhere else.
 export const APP_CLUSTER: Cluster = clusterFromRpc(
   process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.devnet.solana.com",
 );
 
-/// Pools are the exception, and the reason these helpers take a cluster at all: fee history comes
-/// from Meteora's DAMM v2 data API, which indexes mainnet only. A pool priced on the Pricing page is
-/// therefore a mainnet pool no matter which cluster the app is wired to — so its link has to say so,
-/// or the visitor lands on a devnet page that has never heard of the address.
 export const POOL_CLUSTER: Cluster = "mainnet";
 
-/// The API names clusters the way Solana does (`mainnet-beta`); the explorer just says `mainnet`. A
-/// page that has asked the API where an address lives converts the answer through here, so the link it
-/// renders is the one that will actually find it.
 export function explorerCluster(apiCluster: string | null | undefined): Cluster {
   if (apiCluster === "devnet") return "devnet";
   if (apiCluster === "mainnet-beta") return "mainnet";
@@ -73,10 +71,6 @@ function clusterSuffix(cluster: Cluster): string {
   return cluster === "mainnet" ? "" : `?cluster=${cluster}`;
 }
 
-/// Solscan indexes mainnet properly, but its devnet side only shows accounts it can attribute — a
-/// vault or a position owned by our own program answers "we're unable to locate this account", which
-/// reads as a broken link even though the account is there. Solana Explorer reads the chain instead,
-/// so devnet *account* links go there. Transactions stay on Solscan, which does index devnet ones.
 export function explorerUrl(address: string, cluster: Cluster = APP_CLUSTER): string {
   return cluster === "mainnet"
     ? `https://solscan.io/account/${address}`

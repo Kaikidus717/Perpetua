@@ -1,4 +1,4 @@
-node_modules/
+﻿node_modules/
 dist/
 build/
 .next/
@@ -90,10 +90,21 @@ desktop.ini
 .pnpm-store/
 
 # Local only. The agent skill folders live in the home directory, not here, but a project-local
-# `.cline/` can be created at any time — and the audit runbook is a working note, not a deliverable.
+# `.cline/` can be created at any time â€” and the audit runbook is a working note, not a deliverable.
 # None of these may reach the repository.
 /.cline/
 /.agents/
 /SELF-AUDIT.md
+/SECURITY-AUDIT.md
 
 
+
+/file*svg
+
+/work*.svg
+/clean-logo.svg
+/apps/web/app/icon(2)*
+/mark*.svg
+
+/*.svg
+/apps/web/app/icon(*.svg

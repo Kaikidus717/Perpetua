@@ -33,7 +33,7 @@ export function Header() {
           aria-label={SITE.name}
           className="flex shrink-0 items-center gap-2 justify-self-start"
         >
-          <Logo className="h-6 w-6" />
+          <Logo className="h-7 w-7" />
           {/* On a phone the mark carries the brand on its own: a 90px wordmark next to a 24px mark and
               a 152px switch is the definition of clustered. */}
           <span className="hidden text-[14px] font-semibold tracking-[-0.01em] text-ink sm:inline md:text-[15px]">
@@ -42,7 +42,7 @@ export function Header() {
         </Link>
 
         {/* Centred on a desktop, where a reader looks after the page title. On a phone these live in
-            the bottom bar instead — six destinations never fit a 390px header without shrinking to
+            the bottom bar instead â€” six destinations never fit a 390px header without shrinking to
             something nobody can tap. */}
         <nav aria-label="Main" className="hidden items-center gap-0.5 justify-self-center md:flex">
           {DESTINATIONS.map((link) => {

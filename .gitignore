@@ -44,11 +44,8 @@ serviceAccount*.json
 keys/*.json
 !keys/perpetua_vault-devnet.json
 
-**/test/
-**/__tests__/
-**/*.test.ts
-**/*.test.tsx
-**/*.spec.ts
+# Test suites are part of the repository. They are what `pnpm test` and CI run; ignoring
+# them made a green run vacuous. Scratch fixtures belong under scripts/out or tests/fixtures.
 
 _*.mjs
 _*.cjs

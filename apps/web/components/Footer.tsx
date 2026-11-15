@@ -3,10 +3,13 @@ import { CONTAINER, LINK, META } from "@/lib/ui";
 import Link from "next/link";
 
 /// One line of stance, one line of fact. Not a sitemap: the header carries the main destinations,
-/// and the sandbox lives here so it stays reachable without competing with the walkthrough.
+/// and the sandbox and walkthrough live here so they stay reachable without crowding the nav.
+///
+/// The bottom padding on mobile clears the fixed bottom navigation. Without it the last line of the
+/// footer sits under the nav and cannot be read or tapped.
 export function Footer() {
   return (
-    <footer className="border-t border-line/70">
+    <footer className="border-t border-line/70 pb-28 md:pb-0">
       <div
         className={`${CONTAINER} flex flex-col gap-3 py-6 sm:flex-row sm:items-center sm:justify-between`}
       >
@@ -17,8 +20,8 @@ export function Footer() {
             Sandbox
           </Link>
           <span aria-hidden="true">·</span>
-          <Link href="/mcp" className={LINK}>
-            API &amp; MCP
+          <Link href="/walkthrough" className={LINK}>
+            Walkthrough
           </Link>
         </p>
       </div>

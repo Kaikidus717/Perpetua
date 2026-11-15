@@ -10,8 +10,8 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 
-/// Squads' devnet app. Create the multisig there, then set `NEXT_PUBLIC_SANDBOX_MULTISIG` in the
-/// deployment and this card links straight to it — no code change needed.
+/// Squads' devnet app. Create a shared wallet there, then set
+/// `NEXT_PUBLIC_SANDBOX_MULTISIG` in the deployment and this card links straight to it.
 const MULTISIG = process.env.NEXT_PUBLIC_SANDBOX_MULTISIG ?? "";
 const SQUADS = MULTISIG
   ? `https://devnet.squads.so/multisig/${MULTISIG}`
@@ -35,8 +35,8 @@ export default function SandboxPage() {
   return (
     <div className={PAGE}>
       <PageHeader
-        title="DAO treasury sandbox"
-        description="A self-contained devnet rehearsal: fund a wallet, create a locked position, securitize it, then test the payload-swap rejection. No mainnet, no real funds."
+        title="Perpetua sandbox"
+        description="Try the whole flow with test money: get test SOL, create a locked position, turn it into shares, and see why a changed transaction is rejected. No real funds."
       />
 
       <SandboxFunds />
@@ -44,40 +44,35 @@ export default function SandboxPage() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
-          <h2 className="text-[13px] font-semibold text-ink">3 · The payload-swap test</h2>
+          <h2 className="text-[13px] font-semibold text-ink">3 · Test a changed transaction</h2>
           <p className={`${META} leading-5`}>
-            In Squads, propose a <span className="text-ink">create_vault</span> transaction, alter
-            the payload before the final signature, then execute. The program rejects the altered
-            payload: the vault is keyed by the position, the pool is pinned with{" "}
-            <span className="font-mono text-[11px] text-ink">has_one</span>, and the cp-amm program
-            id is asserted.
+            If you share a wallet with other people, test what happens when a transaction changes
+            after approval. Squads is a shared wallet you can use on devnet.
           </p>
           <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-6 text-muted">
-            <li>Propose create_vault in the Squads devnet multisig.</li>
-            <li>Change the position, pool or destination account before the final signature.</li>
-            <li>Execute. The altered payload fails a constraint — the treasury is unchanged.</li>
+            <li>Propose a transaction that turns a position into shares.</li>
+            <li>Change an account before the final signature.</li>
+            <li>Try to send it. Perpetua rejects it, and nothing moves.</li>
           </ol>
           <a href={SQUADS} target="_blank" rel="noreferrer" className={BUTTON}>
             Open devnet Squads ↗
           </a>
-          <p className={`${META} leading-5`}>
-            The same rejection is asserted in{" "}
-            <span className="break-all font-mono text-[11px] text-ink">
-              tests/litesvm/tests/payload_swap_rejection.rs
-            </span>
-            . On devnet, a mutated discriminator returns{" "}
-            <span className="font-mono text-[11px] text-ink">
-              InstructionFallbackNotFound (101)
-            </span>{" "}
-            before an account is touched.
-          </p>
+          <details className="text-[12px]">
+            <summary className="w-fit cursor-pointer text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
+              Technical detail
+            </summary>
+            <p className={`${META} mt-2 leading-5`}>
+              Both cases are covered by an automated test. A changed instruction is rejected on
+              devnet before an account is touched.
+            </p>
+          </details>
         </section>
 
         <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
-          <h2 className="text-[13px] font-semibold text-ink">4 · Live devnet reference</h2>
+          <h2 className="text-[13px] font-semibold text-ink">4 · A live example</h2>
           <p className={`${META} leading-5`}>
-            Read-only: the first vault the API knows about. Copy its position if you want to inspect
-            a real account. To securitize, use your own position in the securitizer above.
+            This is the first vault on devnet. Copy its position or open it in Explorer. To make
+            your own shares, use the section above.
           </p>
           {reference ? (
             <>
@@ -104,26 +99,24 @@ export default function SandboxPage() {
                 <Link href={`/vault/${reference.address}`} className={LINK}>
                   {shortAddress(reference.address)}
                 </Link>{" "}
-                · share mint {shortAddress(reference.shareMint)}
+                · share token {shortAddress(reference.shareMint)}
               </p>
             </>
           ) : vaults.isError ? (
             <p className="text-[13px] leading-5 text-warn">
-              The API did not answer, so there is no live reference right now. The securitizer above
-              still works: it scans the chain directly once a wallet is connected.
+              We could not load the example right now. The section above still works. It reads the
+              chain directly once a wallet is connected.
             </p>
           ) : (
-            <p className={META}>No vault has been registered on devnet yet.</p>
+            <p className={META}>No vault has been created on devnet yet.</p>
           )}
         </section>
       </div>
 
       <p className={`${META} leading-5`}>
-        Devnet only. Nothing here touches mainnet or real funds. The full flow is written up in{" "}
-        <span className="text-ink">WALKTHROUGH.md</span> at the repository root; the same content is
-        in the{" "}
+        Devnet only. Nothing here touches mainnet or real money. For the full explanation, read the{" "}
         <Link href="/walkthrough" className={LINK}>
-          walkthrough
+          Walkthrough
         </Link>
         .
       </p>

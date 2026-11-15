@@ -20,12 +20,12 @@ function sol(lamports: number | null): string {
 function faucetProblem(cause: unknown): string {
   const detail = cause instanceof Error ? cause.message : String(cause);
   if (/410|faucet is closed|faucet\.solana\.com/i.test(detail)) {
-    return "The devnet RPC faucet is closed right now. Use the Solana faucet below to fund this wallet.";
+    return "The test faucet is closed right now. Use the Solana faucet below to get test SOL.";
   }
   if (/rate limit|too many requests|429/i.test(detail)) {
-    return "The public faucet is rate-limiting this network. Use the Solana faucet below to fund this wallet.";
+    return "The test faucet is busy right now. Use the Solana faucet below to get test SOL.";
   }
-  return "The faucet could not send SOL right now. Use the Solana faucet below to fund this wallet.";
+  return "We could not send test SOL right now. Use the Solana faucet below to get some.";
 }
 
 /// Funding lives in the sandbox, not in a separate faucet page. It first asks the deployment's
@@ -76,7 +76,7 @@ export function SandboxFunds() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      setNote("Copy failed — select the address and copy it manually.");
+      setNote("Copy failed. Select the address and copy it manually.");
     }
   }
 
@@ -160,7 +160,7 @@ export function SandboxFunds() {
               disabled={busy}
               className={BUTTON_PRIMARY}
             >
-              {busy ? "Requesting…" : "Request devnet SOL"}
+              {busy ? "Sending test SOL…" : "Get test SOL"}
             </button>
             <button type="button" onClick={() => void wallet.disconnect()} className={BUTTON}>
               Disconnect
@@ -169,13 +169,13 @@ export function SandboxFunds() {
 
           {network.cluster === "mainnet-beta" ? (
             <p className="text-[13px] leading-5 text-warn">
-              This wallet is on mainnet. The vault program is devnet-only — switch Phantom to
+              This wallet is on mainnet. The share flow runs on devnet for now. Switch Phantom to
               Settings → Developer Settings → Change Network → Devnet, then reload.
             </p>
           ) : null}
 
           <p className={`${META} leading-5`}>
-            The shared faucet sends 0.1 SOL to a wallet below 0.2 SOL.
+            The shared faucet sends 0.1 test SOL to a wallet with less than 0.2 test SOL.
           </p>
 
           {signature ? (

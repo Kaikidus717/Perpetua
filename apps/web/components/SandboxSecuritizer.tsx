@@ -52,10 +52,10 @@ async function waitForPosition(owner: string, position: string): Promise<Onchain
 function setupProblem(cause: unknown): string {
   const detail = cause instanceof Error ? cause.message : String(cause);
   if (/IncorrectProgramId|incorrect program id/i.test(detail)) {
-    return "The pool transaction was sent before its mint setup finished. Try again — it now waits for the setup to confirm.";
+    return "The second transaction was sent before the first one finished. Try again. The app now waits for each step.";
   }
   if (/insufficient|no record of a prior credit|debit/i.test(detail)) {
-    return "This wallet needs a little devnet SOL first. Use the funding card above, then try again.";
+    return "This wallet needs a little test SOL first. Use the funding card above, then try again.";
   }
   if (/rejected|declined|cancel/i.test(detail)) {
     return "You declined a wallet prompt. Nothing was sent.";
@@ -110,7 +110,7 @@ export function SandboxSecuritizer() {
       setResult({ ...created, position: position.address, vault: findVault(position.address) });
       void positions.refetch();
     } catch (cause) {
-      setMessage(humanError(cause, "Creating the shares"));
+      setMessage(humanError(cause, "Turning the position into shares"));
     } finally {
       setBusy(null);
     }
@@ -138,7 +138,7 @@ export function SandboxSecuritizer() {
       const detail = await waitForPosition(wallet.address, locked.position);
       if (!detail) {
         setMessage(
-          "The locked position was created, but the scan has not caught up yet. It will appear above; press Create shares on it.",
+          "The locked position was created, but the scan has not caught up yet. It will appear above. Press Turn into shares on it.",
         );
         void positions.refetch();
         return;
@@ -163,7 +163,7 @@ export function SandboxSecuritizer() {
       void positions.refetch();
     } catch (cause) {
       const hint = createdPosition
-        ? " The locked position exists; press Create shares on it once the scan shows it."
+        ? " The locked position exists. Press Turn into shares on it once the scan shows it."
         : "";
       setMessage(`${setupProblem(cause)}${hint}`);
       if (createdPosition) void positions.refetch();
@@ -190,8 +190,8 @@ export function SandboxSecuritizer() {
 
       {ready && wrongNetwork ? (
         <p className="text-[13px] leading-5 text-warn">
-          This wallet is on mainnet. The vault program is devnet-only, so the scan and the
-          securitizer wait for a devnet wallet.
+          This wallet is on mainnet. The share flow runs on devnet for now, so this section waits
+          for a devnet wallet.
         </p>
       ) : null}
 
@@ -225,8 +225,8 @@ export function SandboxSecuritizer() {
             <div className={`${CARD_MUTED} space-y-3 p-4`}>
               <p className="text-[13px] font-semibold text-ink">No position yet? Build one.</p>
               <p className="text-[12px] leading-5 text-muted">
-                One click creates a fresh DAMM v2 pool with permanently locked liquidity, then turns
-                it into a vault with 1,000,000 shares. You will approve three wallet prompts.
+                One click creates a fresh Meteora pool with money locked forever, then turns it into
+                a vault with 1,000,000 shares. You will approve three wallet prompts.
               </p>
               <button
                 type="button"
@@ -255,21 +255,21 @@ export function SandboxSecuritizer() {
                         {shortAddress(position.address)} ↗
                       </a>
                       <span className={eligible ? CHIP : CHIP_WARN}>
-                        {eligible ? "eligible" : "not eligible"}
+                        {eligible ? "ready" : "needs a split"}
                       </span>
                     </div>
 
                     <div className="grid gap-2 text-[12px] sm:grid-cols-3">
                       <div>
-                        <div className="text-muted">Unlocked</div>
+                        <div className="text-muted">Can be withdrawn</div>
                         <div className="tnum text-ink">{position.unlockedLiquidity}</div>
                       </div>
                       <div>
-                        <div className="text-muted">Vested</div>
+                        <div className="text-muted">Unlocks over time</div>
                         <div className="tnum text-ink">{position.vestedLiquidity}</div>
                       </div>
                       <div>
-                        <div className="text-muted">Permanent lock</div>
+                        <div className="text-muted">Locked forever</div>
                         <div className="tnum text-ink">{position.permanentLockedLiquidity}</div>
                       </div>
                     </div>
@@ -287,7 +287,7 @@ export function SandboxSecuritizer() {
                         disabled={!eligible || busy !== null}
                         className={BUTTON_PRIMARY}
                       >
-                        {busy === position.address ? "Waiting for signature…" : "Create shares"}
+                        {busy === position.address ? "Waiting for signature…" : "Turn into shares"}
                       </button>
                       <span className={META}>pool {shortAddress(position.pool)}</span>
                     </div>
@@ -321,7 +321,7 @@ export function SandboxSecuritizer() {
 
       {result ? (
         <div className={`${CARD_MUTED} space-y-2 p-3 text-[13px] leading-5`}>
-          <p className="font-medium text-ink">Vault created.</p>
+          <p className="font-medium text-ink">Your shares are ready.</p>
           <p className="text-muted">
             Position{" "}
             <a
@@ -334,7 +334,7 @@ export function SandboxSecuritizer() {
             </a>
           </p>
           <p className="text-muted">
-            Share mint{" "}
+            Share token{" "}
             <a
               href={explorerUrl(result.shareMint, "devnet")}
               target="_blank"
@@ -369,8 +369,8 @@ export function SandboxSecuritizer() {
             </a>
           </p>
           <p className="text-muted">
-            The position NFT now belongs to the vault. Stake, crank and harvest below without
-            leaving the sandbox.
+            The position is now held by the vault. You can stake, collect fees, and exit below
+            without leaving the sandbox.
           </p>
         </div>
       ) : null}

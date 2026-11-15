@@ -13,6 +13,7 @@ export const DESTINATIONS = [
   { href: "/terminal", label: "Pricing" },
   { href: "/launch", label: "Launch" },
   { href: "/securitize", label: "Shares" },
+  { href: "/sandbox", label: "Sandbox" },
   { href: "/mcp", label: "AI" },
   { href: "/kpi", label: "Stats" },
 ];

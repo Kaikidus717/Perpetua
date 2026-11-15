@@ -15,6 +15,19 @@ function sol(lamports: number | null): string {
   return lamports === null ? "—" : `${(lamports / 1_000_000_000).toFixed(3)} SOL`;
 }
 
+/// The RPC's airdrop error is JSON with a status code inside it. The page only needs to tell the
+/// visitor what to do next, so the raw payload never reaches the screen.
+function faucetProblem(cause: unknown): string {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  if (/410|faucet is closed|faucet\.solana\.com/i.test(detail)) {
+    return "The devnet RPC faucet is closed right now. Use the Solana faucet below to fund this wallet.";
+  }
+  if (/rate limit|too many requests|429/i.test(detail)) {
+    return "The public faucet is rate-limiting this network. Use the Solana faucet below to fund this wallet.";
+  }
+  return "The faucet could not send SOL right now. Use the Solana faucet below to fund this wallet.";
+}
+
 /// Funding lives in the sandbox, not in a separate faucet page. It first asks the deployment's
 /// shared devnet faucet (0.05 SOL, only to a wallet that has none); if that is absent or rate-limits,
 /// it falls back to the public RPC, then tells the visitor to use faucet.solana.com.
@@ -24,6 +37,7 @@ export function SandboxFunds() {
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [needsFaucet, setNeedsFaucet] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -71,6 +85,7 @@ export function SandboxFunds() {
     const address = wallet.address;
     setBusy(true);
     setNote(null);
+    setNeedsFaucet(false);
     setSignature(null);
     try {
       const result = await api.faucet(address);
@@ -86,8 +101,8 @@ export function SandboxFunds() {
       await refreshBalance(address);
       setTimeout(() => void refreshBalance(address), 2500);
     } catch {
-      /// No shared faucet on this deployment (503), or it could not send. The public RPC is the
-      /// same fallback the old sandbox used, and it is also the one that rate-limits by IP.
+      /// No shared faucet on this deployment, or it could not send. The public RPC is the same
+      /// fallback the old sandbox used, and it is also the one that can return a 410/429.
       try {
         const connection = new Connection(RPC_URL, "confirmed");
         const tx = await connection.requestAirdrop(new PublicKey(address), AIRDROP_LAMPORTS);
@@ -97,11 +112,8 @@ export function SandboxFunds() {
         setNote("1 devnet SOL sent by the public RPC.");
         await refreshBalance(address);
       } catch (cause) {
-        setNote(
-          `No airdrop: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }. The public devnet faucet rate-limits by IP. Copy the address below and use faucet.solana.com — one request is enough.`,
-        );
+        setNeedsFaucet(true);
+        setNote(faucetProblem(cause));
       }
     } finally {
       setBusy(false);
@@ -163,12 +175,7 @@ export function SandboxFunds() {
           ) : null}
 
           <p className={`${META} leading-5`}>
-            The shared faucet sends 0.05 SOL, only to a wallet below 0.1 SOL. If this deployment has
-            no shared faucet or the public RPC is rate-limiting, copy the address and use{" "}
-            <a href="https://faucet.solana.com" target="_blank" rel="noreferrer" className={LINK}>
-              faucet.solana.com ↗
-            </a>
-            .
+            The shared faucet sends 0.1 SOL to a wallet below 0.2 SOL.
           </p>
 
           {signature ? (
@@ -181,11 +188,25 @@ export function SandboxFunds() {
               View the transaction {shortAddress(signature)} ↗
             </a>
           ) : null}
+
+          {needsFaucet ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href="https://faucet.solana.com"
+                target="_blank"
+                rel="noreferrer"
+                className={BUTTON_PRIMARY}
+              >
+                Open faucet.solana.com ↗
+              </a>
+              <span className={META}>Copy the address above, paste it there, choose Devnet.</span>
+            </div>
+          ) : null}
         </>
       )}
 
       {wallet.error ? <p className="text-[13px] text-warn">{wallet.error}</p> : null}
-      {note ? <p className="break-all text-[13px] leading-5 text-muted">{note}</p> : null}
+      {note ? <p className="text-[13px] leading-5 text-muted">{note}</p> : null}
     </section>
   );
 }

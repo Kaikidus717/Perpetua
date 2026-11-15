@@ -5,7 +5,7 @@ import { SandboxFunds } from "@/components/SandboxFunds";
 import { SandboxSecuritizer } from "@/components/SandboxSecuritizer";
 import { api } from "@/lib/api";
 import { explorerUrl, shortAddress } from "@/lib/format";
-import { BUTTON, CARD, CARD_MUTED, LINK, META, PAGE } from "@/lib/ui";
+import { BUTTON, CARD, LINK, META, PAGE } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
@@ -38,15 +38,6 @@ export default function SandboxPage() {
         title="DAO treasury sandbox"
         description="A self-contained devnet rehearsal: fund a wallet, create a locked position, securitize it, then test the payload-swap rejection. No mainnet, no real funds."
       />
-
-      <output className={`${CARD_MUTED} block px-4 py-3 text-[13px] leading-5 text-muted`}>
-        <span className="text-ink">This page is not in the main navigation.</span> It is linked from
-        the footer and from the{" "}
-        <Link href="/walkthrough" className={LINK}>
-          walkthrough
-        </Link>
-        . Everything below happens on devnet.
-      </output>
 
       <SandboxFunds />
       <SandboxSecuritizer />

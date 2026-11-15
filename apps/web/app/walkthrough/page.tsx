@@ -22,7 +22,6 @@ export default async function WalkthroughPage({
       <PageHeader
         title="What Perpetua does, and what it refuses to do"
         description="A two-minute walkthrough for a DAO or multisig treasury: where the program runs, the three checks before a transaction is built, and why a payload swapped after approval cannot land."
-        actions={firstVisit ? <UnderstandButton /> : undefined}
       />
 
       {firstVisit ? (

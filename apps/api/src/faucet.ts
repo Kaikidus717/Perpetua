@@ -31,8 +31,9 @@ export function createFaucet(options: FaucetOptions): FaucetPort {
     throw new Error("SANDBOX_FAUCET_SECRET must be a 64-byte Solana keypair as a JSON array");
   }
   const payer = Keypair.fromSecretKey(Uint8Array.from(secret as number[]));
-  const amountLamports = options.amountLamports ?? 50_000_000; // 0.05 SOL
-  const minBalanceLamports = options.minBalanceLamports ?? 100_000_000; // 0.1 SOL
+  /// 0.1 SOL covers a locked position plus its vault with room for a few transactions.
+  const amountLamports = options.amountLamports ?? 100_000_000;
+  const minBalanceLamports = options.minBalanceLamports ?? 200_000_000;
   const cooldownMs = options.cooldownMs ?? 60 * 60 * 1000;
   const lastDrip = new Map<string, number>();
 

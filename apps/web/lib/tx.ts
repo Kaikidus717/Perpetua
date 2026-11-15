@@ -462,15 +462,21 @@ export async function createLockedPosition(
     cluster,
   );
 
+  const connection = new Connection(rpcUrl(cluster), "confirmed");
   const setupTx = Transaction.from(fromBase64(setup));
   setupTx.partialSign(mintA, mintB);
-  await send(provider, setupTx, cluster);
+  const setupSignature = await send(provider, setupTx, cluster);
+
+  /// The pool transaction's first instructions are idempotent ATA creates for the two mints. If the
+  /// setup transaction is still in flight, those mints are still owned by the System program and the
+  /// Token program answers IncorrectProgramId. Wait for the setup to land before simulating the pool.
+  await connection.confirmTransaction(setupSignature, "confirmed");
 
   const createTx = Transaction.from(fromBase64(create));
   createTx.partialSign(positionNft);
   const signature = await send(provider, createTx, cluster);
 
-  await new Connection(rpcUrl(cluster), "confirmed").confirmTransaction(signature, "confirmed");
+  await connection.confirmTransaction(signature, "confirmed");
 
   return {
     pool,

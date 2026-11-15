@@ -1,16 +1,15 @@
 "use client";
 
-import { CreateLockedPosition } from "@/components/CreateLockedPosition";
 import { Spinner } from "@/components/Spinner";
 import { VaultActions } from "@/components/VaultActions";
 import { type OnchainPosition, api } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl } from "@/lib/format";
 import { humanError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
-import { type SecuritizeResult, securitize } from "@/lib/tx";
+import { RPC_URL, type SecuritizeResult, createLockedPosition, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, CHIP, CHIP_WARN, LINK, META } from "@/lib/ui";
 import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
-import { PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -29,6 +28,39 @@ function findVault(position: string): string | null {
   } catch {
     return null;
   }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/// The pool transaction is confirmed before this runs, but the RPC index can lag a beat. Poll the
+/// same scan the page uses until the new position is visible.
+async function waitForPosition(owner: string, position: string): Promise<OnchainPosition | null> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      const { positions: rows } = await api.positionsOnchain(owner, DEVNET);
+      const found = rows.find((row) => row.address === position);
+      if (found) return found;
+    } catch {
+      // Keep polling; the next attempt may land after the RPC catches up.
+    }
+    await sleep(1500);
+  }
+  return null;
+}
+
+/// Setup errors are the ones a first-time wallet hits, so they get sentences rather than RPC logs.
+function setupProblem(cause: unknown): string {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  if (/IncorrectProgramId|incorrect program id/i.test(detail)) {
+    return "The pool transaction was sent before its mint setup finished. Try again — it now waits for the setup to confirm.";
+  }
+  if (/insufficient|no record of a prior credit|debit/i.test(detail)) {
+    return "This wallet needs a little devnet SOL first. Use the funding card above, then try again.";
+  }
+  if (/rejected|declined|cancel/i.test(detail)) {
+    return "You declined a wallet prompt. Nothing was sent.";
+  }
+  return humanError(cause, "Setting up the test vault");
 }
 
 /// The sandbox's own securitizer: scan this wallet, show the eligibility verdict, create shares,
@@ -52,6 +84,7 @@ export function SandboxSecuritizer() {
     queryFn: () => api.positionsOnchain(wallet.address as string, DEVNET),
     enabled: Boolean(wallet.address),
   });
+  const hasEligible = positions.data?.positions.some((position) => position.eligibility.eligible);
 
   async function run(position: OnchainPosition): Promise<void> {
     if (!provider) return;
@@ -83,13 +116,69 @@ export function SandboxSecuritizer() {
     }
   }
 
+  /// One action for a fresh wallet: create a permanently locked position, wait for the scan to see
+  /// it, then securitize it. The wallet still signs every transaction — the sandbox just removes the
+  /// step-by-step work.
+  async function provision(): Promise<void> {
+    if (!provider || !wallet.address) return;
+    setBusy("provisioning");
+    setMessage(null);
+    setResult(null);
+    let createdPosition: string | null = null;
+    try {
+      const connection = new Connection(RPC_URL, "confirmed");
+      const balance = await connection.getBalance(new PublicKey(wallet.address));
+      if (balance < 50_000_000) {
+        setMessage("Add a little devnet SOL first using the funding card above, then try again.");
+        return;
+      }
+
+      const locked = await createLockedPosition(provider, DEVNET);
+      createdPosition = locked.position;
+      const detail = await waitForPosition(wallet.address, locked.position);
+      if (!detail) {
+        setMessage(
+          "The locked position was created, but the scan has not caught up yet. It will appear above; press Create shares on it.",
+        );
+        void positions.refetch();
+        return;
+      }
+
+      const created = await securitize(
+        provider,
+        {
+          pool: detail.pool,
+          position: detail.address,
+          positionNftMint: detail.nftMint,
+          positionNftAccount: detail.nftAccount,
+          positionNftProgram: detail.positionNftProgram,
+          tokenAMint: detail.tokenAMint,
+          tokenBMint: detail.tokenBMint,
+          tokenAProgram: detail.tokenAProgram,
+          tokenBProgram: detail.tokenBProgram,
+        },
+        DEVNET,
+      );
+      setResult({ ...created, position: detail.address, vault: findVault(detail.address) });
+      void positions.refetch();
+    } catch (cause) {
+      const hint = createdPosition
+        ? " The locked position exists; press Create shares on it once the scan shows it."
+        : "";
+      setMessage(`${setupProblem(cause)}${hint}`);
+      if (createdPosition) void positions.refetch();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className={`${CARD} space-y-4 p-4 sm:p-5`}>
       <div className="space-y-1">
-        <h2 className="text-[13px] font-semibold text-ink">2 · Securitize a position</h2>
+        <h2 className="text-[13px] font-semibold text-ink">2 · Your test vault</h2>
         <p className={`${META} max-w-xl leading-5`}>
-          The sandbox scans this wallet itself. Create a locked position if it has none, check the
-          three locks, then create shares — all on this page.
+          The sandbox creates the locked position and the vault for you. Approve the wallet prompts;
+          everything else happens here.
         </p>
       </div>
 
@@ -108,6 +197,13 @@ export function SandboxSecuritizer() {
 
       {ready && !wrongNetwork ? (
         <>
+          {busy === "provisioning" ? (
+            <p className={`${META} flex items-center gap-2`}>
+              <Spinner label="Creating your test vault" />
+              Creating the locked position and vault. Approve each wallet prompt.
+            </p>
+          ) : null}
+
           {positions.isPending ? (
             <p className={`${META} flex items-center gap-2`}>
               <Spinner label="Scanning this wallet" />
@@ -126,19 +222,21 @@ export function SandboxSecuritizer() {
           ) : null}
 
           {positions.data && positions.data.positions.length === 0 ? (
-            <>
-              <p className="text-[13px] leading-5 text-muted">
-                No locked positions in this wallet. Create one here; it is a fresh DAMM v2 pool
-                whose liquidity is locked forever and owned by this wallet.
+            <div className={`${CARD_MUTED} space-y-3 p-4`}>
+              <p className="text-[13px] font-semibold text-ink">No position yet? Build one.</p>
+              <p className="text-[12px] leading-5 text-muted">
+                One click creates a fresh DAMM v2 pool with permanently locked liquidity, then turns
+                it into a vault with 1,000,000 shares. You will approve three wallet prompts.
               </p>
-              <CreateLockedPosition
-                cluster={DEVNET}
-                onCreated={async () => {
-                  const scanned = await positions.refetch();
-                  return (scanned.data?.positions.length ?? 0) > 0;
-                }}
-              />
-            </>
+              <button
+                type="button"
+                onClick={() => void provision()}
+                disabled={busy !== null}
+                className={BUTTON_PRIMARY}
+              >
+                {busy === "provisioning" ? "Building your vault…" : "Create my test vault"}
+              </button>
+            </div>
           ) : null}
 
           {positions.data && positions.data.positions.length > 0 ? (
@@ -197,6 +295,24 @@ export function SandboxSecuritizer() {
                 );
               })}
             </ul>
+          ) : null}
+
+          {positions.data && positions.data.positions.length > 0 && !hasEligible ? (
+            <div className={`${CARD_MUTED} space-y-3 p-4`}>
+              <p className="text-[13px] font-semibold text-ink">Need a clean test position?</p>
+              <p className="text-[12px] leading-5 text-muted">
+                None of the positions above can back shares. Create a fresh locked position and
+                vault in one action.
+              </p>
+              <button
+                type="button"
+                onClick={() => void provision()}
+                disabled={busy !== null}
+                className={BUTTON}
+              >
+                {busy === "provisioning" ? "Building your vault…" : "Create my test vault"}
+              </button>
+            </div>
           ) : null}
         </>
       ) : null}

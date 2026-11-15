@@ -4,6 +4,7 @@ import { MeteoraDataApi } from "@perpetua/sdk/data";
 import { resolveNetwork } from "@perpetua/shared";
 import type { Connection } from "@solana/web3.js";
 import { type ClusterName, createApp } from "./app.js";
+import { type FaucetPort, createFaucet } from "./faucet.js";
 import { InMemoryStore } from "./store/memory.js";
 import type { Store } from "./store/types.js";
 
@@ -19,6 +20,21 @@ const connections: Record<ClusterName, Connection> = {
   "mainnet-beta": createConnection({ cluster: "mainnet-beta" }),
 };
 const defaultCluster: ClusterName = network.cluster === "devnet" ? "devnet" : "mainnet-beta";
+
+/// The shared sandbox faucet is optional. A malformed secret disables it rather than taking the API
+/// down; the sandbox page then falls back to the public faucet.
+const faucetSecret = process.env.SANDBOX_FAUCET_SECRET;
+let faucet: FaucetPort | undefined;
+if (faucetSecret) {
+  try {
+    faucet = createFaucet({ connection: connections.devnet, secret: faucetSecret });
+  } catch (error) {
+    console.error(
+      "SANDBOX_FAUCET_SECRET is set but invalid; the shared faucet is disabled:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
 
 // The Postgres driver is only loaded when a database is configured, so the default
 // in-memory mode starts without pulling drizzle-orm into the process.
@@ -44,6 +60,7 @@ const app = createApp({
   /// The vault registry is read from the chain the program is deployed on. Devnet today; the deploy
   /// can point it elsewhere with `VAULT_CLUSTER` when the program ships to another cluster.
   vaultCluster: process.env.VAULT_CLUSTER === "mainnet-beta" ? "mainnet-beta" : "devnet",
+  faucet,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {

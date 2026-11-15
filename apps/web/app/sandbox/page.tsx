@@ -1,64 +1,34 @@
 "use client";
 
 import { PageHeader } from "@/components/PageHeader";
+import { SandboxFunds } from "@/components/SandboxFunds";
+import { SandboxSecuritizer } from "@/components/SandboxSecuritizer";
 import { api } from "@/lib/api";
-import { RPC_URL } from "@/lib/tx";
-import { BUTTON, BUTTON_PRIMARY, CARD, LINK, META, PAGE } from "@/lib/ui";
-import { useSolanaWallet } from "@/lib/wallet";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { explorerUrl, shortAddress } from "@/lib/format";
+import { BUTTON, CARD, CARD_MUTED, LINK, META, PAGE } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 
-/// Squads' devnet app. A treasury team creates its multisig there, then pastes the address into
-/// `MULTISIG` below so the third card links straight to it.
-const MULTISIG = "";
+/// Squads' devnet app. Create the multisig there, then set `NEXT_PUBLIC_SANDBOX_MULTISIG` in the
+/// deployment and this card links straight to it — no code change needed.
+const MULTISIG = process.env.NEXT_PUBLIC_SANDBOX_MULTISIG ?? "";
 const SQUADS = MULTISIG
   ? `https://devnet.squads.so/multisig/${MULTISIG}`
   : "https://devnet.squads.so";
 
-const AIRDROP_LAMPORTS = 2_000_000_000;
-
 export default function SandboxPage() {
-  const wallet = useSolanaWallet();
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  /// The test position comes from the API rather than a hardcoded string, so it is always a live
-  /// devnet position that can actually be securitized.
+  const [copied, setCopied] = useState<string | null>(null);
   const vaults = useQuery({ queryKey: ["vaults"], queryFn: api.vaults });
-  const testPosition = vaults.data?.vaults[0]?.position ?? null;
+  const reference = vaults.data?.vaults[0] ?? null;
 
-  async function airdrop() {
-    if (!wallet.address) return;
-    setBusy(true);
-    setNote(null);
+  async function copy(label: string, value: string): Promise<void> {
     try {
-      const connection = new Connection(RPC_URL, "confirmed");
-      const signature = await connection.requestAirdrop(
-        new PublicKey(wallet.address),
-        AIRDROP_LAMPORTS,
-      );
-      const latest = await connection.getLatestBlockhash();
-      await connection.confirmTransaction({ signature, ...latest }, "confirmed");
-      setNote(`2 devnet SOL sent. Transaction ${signature.slice(0, 12)}…`);
-    } catch (cause) {
-      /// The public devnet faucet rate-limits by IP and by wallet. Saying so beats a spinner.
-      setNote(
-        `No airdrop: ${cause instanceof Error ? cause.message : String(cause)}. The public devnet faucet rate-limits — try again later, or use faucet.solana.com with this wallet.`,
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copy(address: string) {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1800);
     } catch {
-      setNote("Copy failed — select the address and copy it manually.");
+      setCopied("copy-failed");
     }
   }
 
@@ -66,68 +36,105 @@ export default function SandboxPage() {
     <div className={PAGE}>
       <PageHeader
         title="DAO treasury sandbox"
-        description="Test the payload-swap rejection flow on devnet, with no real funds at risk."
+        description="A self-contained devnet rehearsal: fund a wallet, create a locked position, securitize it, then test the payload-swap rejection. No mainnet, no real funds."
       />
 
-      <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
-        <h2 className="text-[13px] font-semibold text-ink">1 · Test funds</h2>
-        <p className={`${META} leading-5`}>
-          A devnet wallet needs SOL for rent and fees. Two is enough for a vault and a dozen
-          transactions.
-        </p>
-        {wallet.address ? (
-          <button
-            type="button"
-            onClick={() => void airdrop()}
-            disabled={busy}
-            className={BUTTON_PRIMARY}
-          >
-            {busy ? "Requesting…" : "Request 2 devnet SOL"}
-          </button>
-        ) : (
-          <button type="button" onClick={() => void wallet.connect()} className={BUTTON}>
-            Connect a wallet first
-          </button>
-        )}
-      </section>
+      <output className={`${CARD_MUTED} block px-4 py-3 text-[13px] leading-5 text-muted`}>
+        <span className="text-ink">This page is not in the main navigation.</span> It is linked from
+        the footer and from the{" "}
+        <Link href="/walkthrough" className={LINK}>
+          walkthrough
+        </Link>
+        . Everything below happens on devnet.
+      </output>
 
-      <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
-        <h2 className="text-[13px] font-semibold text-ink">2 · Test position</h2>
-        <p className={`${META} leading-5`}>
-          A live devnet position from our test vault. Paste it into Create shares to walk the
-          securitization flow.
-        </p>
-        {testPosition ? (
-          <>
-            <p className="break-all font-mono text-[12px] text-ink">{testPosition}</p>
-            <button type="button" onClick={() => void copy(testPosition)} className={BUTTON}>
-              {copied ? "Copied" : "Copy test position address"}
-            </button>
-          </>
-        ) : (
-          <p className={META}>No devnet position is registered with the API right now.</p>
-        )}
-      </section>
+      <SandboxFunds />
+      <SandboxSecuritizer />
 
-      <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
-        <h2 className="text-[13px] font-semibold text-ink">3 · The payload-swap test</h2>
-        <p className={`${META} leading-5`}>
-          In Squads, propose a <span className="text-ink">create_vault</span> transaction, alter the
-          payload before the final signature, then execute. The program rejects the altered payload
-          — the vault is keyed by the position and the pool is pinned, so a swapped account cannot
-          resolve. The same case is asserted in{" "}
-          <span className="text-ink">tests/litesvm/tests/payload_swap_rejection.rs</span>.
-        </p>
-        <a href={SQUADS} target="_blank" rel="noreferrer" className={BUTTON}>
-          Open devnet Squads ↗
-        </a>
-      </section>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
+          <h2 className="text-[13px] font-semibold text-ink">3 · The payload-swap test</h2>
+          <p className={`${META} leading-5`}>
+            In Squads, propose a <span className="text-ink">create_vault</span> transaction, alter
+            the payload before the final signature, then execute. The program rejects the altered
+            payload: the vault is keyed by the position, the pool is pinned with{" "}
+            <span className="font-mono text-[11px] text-ink">has_one</span>, and the cp-amm program
+            id is asserted.
+          </p>
+          <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-6 text-muted">
+            <li>Propose create_vault in the Squads devnet multisig.</li>
+            <li>Change the position, pool or destination account before the final signature.</li>
+            <li>Execute. The altered payload fails a constraint — the treasury is unchanged.</li>
+          </ol>
+          <a href={SQUADS} target="_blank" rel="noreferrer" className={BUTTON}>
+            Open devnet Squads ↗
+          </a>
+          <p className={`${META} leading-5`}>
+            The same rejection is asserted in{" "}
+            <span className="break-all font-mono text-[11px] text-ink">
+              tests/litesvm/tests/payload_swap_rejection.rs
+            </span>
+            . On devnet, a mutated discriminator returns{" "}
+            <span className="font-mono text-[11px] text-ink">
+              InstructionFallbackNotFound (101)
+            </span>{" "}
+            before an account is touched.
+          </p>
+        </section>
 
-      {note ? <p className={`${META} break-all`}>{note}</p> : null}
+        <section className={`${CARD} space-y-3 p-4 sm:p-5`}>
+          <h2 className="text-[13px] font-semibold text-ink">4 · Live devnet reference</h2>
+          <p className={`${META} leading-5`}>
+            Read-only: the first vault the API knows about. Copy its position if you want to inspect
+            a real account. To securitize, use your own position in the securitizer above.
+          </p>
+          {reference ? (
+            <>
+              <p className="break-all font-mono text-[12px] text-ink">{reference.position}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copy("position", reference.position)}
+                  className={BUTTON}
+                >
+                  {copied === "position" ? "Copied" : "Copy position"}
+                </button>
+                <a
+                  href={explorerUrl(reference.position, "devnet")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={BUTTON}
+                >
+                  Open on Explorer ↗
+                </a>
+              </div>
+              <p className={`${META} break-all leading-5`}>
+                vault{" "}
+                <Link href={`/vault/${reference.address}`} className={LINK}>
+                  {shortAddress(reference.address)}
+                </Link>{" "}
+                · share mint {shortAddress(reference.shareMint)}
+              </p>
+            </>
+          ) : vaults.isError ? (
+            <p className="text-[13px] leading-5 text-warn">
+              The API did not answer, so there is no live reference right now. The securitizer above
+              still works: it scans the chain directly once a wallet is connected.
+            </p>
+          ) : (
+            <p className={META}>No vault has been registered on devnet yet.</p>
+          )}
+        </section>
+      </div>
 
-      <p className={META}>
+      <p className={`${META} leading-5`}>
         Devnet only. Nothing here touches mainnet or real funds. The full flow is written up in{" "}
-        <span className="text-ink">WALKTHROUGH.md</span> at the repository root.
+        <span className="text-ink">WALKTHROUGH.md</span> at the repository root; the same content is
+        in the{" "}
+        <Link href="/walkthrough" className={LINK}>
+          walkthrough
+        </Link>
+        .
       </p>
     </div>
   );

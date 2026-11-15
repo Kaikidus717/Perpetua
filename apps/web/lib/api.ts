@@ -160,7 +160,24 @@ export function apiStatus(error: unknown): number | undefined {
   return error instanceof ApiError ? error.status : undefined;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${apiBase()}${path}`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new ApiError(response.status, await errorSentence(response));
+  return (await response.json()) as T;
+}
+
 export const api = {
+  faucet: (wallet: string) =>
+    post<{
+      signature: string | null;
+      amountLamports: number;
+      skipped: boolean;
+      reason?: string;
+    }>("/v1/faucet", { wallet }),
   preset: (params: {
     creatorTradingFeePct?: number;
     creatorLiquidityPct?: number;

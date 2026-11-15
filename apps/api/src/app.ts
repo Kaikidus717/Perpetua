@@ -22,6 +22,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { readVaultEvents } from "./events.js";
+import type { FaucetPort } from "./faucet.js";
 import { createMcpEndpoint } from "./mcp.js";
 import type { Store } from "./store/types.js";
 import {
@@ -58,6 +59,8 @@ export interface AppDeps {
   vaultCluster?: ClusterName;
   /// Browser origins allowed to call the API. Defaults to `CORS_ORIGINS`.
   corsOrigins?: string[];
+  /// Optional shared devnet faucet for the sandbox. Absent unless `SANDBOX_FAUCET_SECRET` is set.
+  faucet?: FaucetPort;
 }
 
 /// The two clusters this app talks to. A wallet, a pool, a mint and a vault each exist on exactly one
@@ -448,6 +451,30 @@ export function createApp(deps: AppDeps): Hono {
       available: Object.keys(clusterMap(deps)),
     }),
   );
+
+  /// The sandbox's shared devnet faucet. Disabled unless `SANDBOX_FAUCET_SECRET` is configured;
+  /// when it is absent the page falls back to the public faucet, which rate-limits by IP.
+  app.post("/v1/faucet", async (c) => {
+    if (!deps.faucet) {
+      return c.json(
+        {
+          error:
+            "the shared devnet faucet is not configured on this deployment. Copy your address and use faucet.solana.com.",
+        },
+        503,
+      );
+    }
+    const parsed = z.object({ wallet: pubkey }).safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    try {
+      return c.json(await deps.faucet.drip(parsed.data.wallet));
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "the faucet could not send SOL" },
+        502,
+      );
+    }
+  });
 
   /// Where an address lives, and what it is. A pool, a wallet, a mint and a vault are all just
   /// accounts; only one cluster has the account at all, and the owner program says which kind it is.

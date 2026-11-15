@@ -9,11 +9,11 @@ import { usePathname } from "next/navigation";
 
 /// Plain nouns a first-time visitor can guess at.
 export const DESTINATIONS = [
+  { href: "/walkthrough", label: "Walkthrough" },
   { href: "/", label: "Vaults" },
   { href: "/terminal", label: "Pricing" },
   { href: "/launch", label: "Launch" },
   { href: "/securitize", label: "Shares" },
-  { href: "/sandbox", label: "Sandbox" },
   { href: "/mcp", label: "AI" },
   { href: "/kpi", label: "Stats" },
 ];

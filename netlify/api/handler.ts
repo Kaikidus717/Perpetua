@@ -21,6 +21,7 @@
 /// which is outside the pnpm workspace packages that declare `@perpetua/*` as dependencies, so pnpm
 /// never links them into the root `node_modules` either.
 import { createApp } from "../../apps/api/dist/app.js";
+import { type FaucetPort, createFaucet } from "../../apps/api/dist/faucet.js";
 import { InMemoryStore } from "../../apps/api/dist/store/memory.js";
 import { MeteoraDataApi } from "../../packages/sdk/dist/data/meteoraDataApi.js";
 import { createConnection } from "../../packages/sdk/dist/rpc.js";
@@ -33,6 +34,20 @@ const connections = {
   "mainnet-beta": createConnection({ cluster: "mainnet-beta" }),
 };
 
+/// Optional shared sandbox faucet. Devnet-only, and disabled unless the deployment sets a secret.
+const faucetSecret = process.env.SANDBOX_FAUCET_SECRET;
+let faucet: FaucetPort | undefined;
+if (faucetSecret) {
+  try {
+    faucet = createFaucet({ connection: connections.devnet, secret: faucetSecret });
+  } catch (error) {
+    console.error(
+      "SANDBOX_FAUCET_SECRET is set but invalid; the shared faucet is disabled:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 const app = createApp({
   store: new InMemoryStore(),
   dataApi: new MeteoraDataApi({
@@ -43,6 +58,7 @@ const app = createApp({
   /// The vault registry is read from the chain the program is deployed on. Devnet today; the deploy
   /// can point it elsewhere with `VAULT_CLUSTER` when the program ships to another cluster.
   vaultCluster: process.env.VAULT_CLUSTER === "mainnet-beta" ? "mainnet-beta" : "devnet",
+  faucet,
 });
 
 /// The subset of the Functions v1 event we read. Declared inline because the repository does not

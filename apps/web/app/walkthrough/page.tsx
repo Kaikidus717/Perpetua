@@ -28,8 +28,7 @@ export default async function WalkthroughPage({
       {firstVisit ? (
         <output className={`${CARD_MUTED} block px-4 py-3 text-[13px] leading-5 text-muted`}>
           <span className="text-ink">First visit.</span> Read the four sections below, then press{" "}
-          <span className="text-ink">I understand</span> to continue to the app. This button appears
-          once; afterwards this page is information only.
+          <span className="text-ink">I understand</span> to continue to the app.
         </output>
       ) : null}
 

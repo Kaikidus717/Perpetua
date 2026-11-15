@@ -196,7 +196,7 @@ const pricePosition = defineTool({
       };
     }
 
-    if (!args.pool) throw new Error("provide either `position` or `pool`");
+    if (!args.pool) throw new Error("Provide a position or a pool.");
 
     const path = API.poolYield(args.pool);
     const payload = record(await port.get(path, query));

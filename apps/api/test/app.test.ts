@@ -81,7 +81,7 @@ describe("perpetua api", () => {
 
   it("returns an empty vault list and zeroed stats initially", async () => {
     const list = await app().request("/v1/vaults");
-    expect(await list.json()).toEqual({ vaults: [] });
+    expect(await list.json()).toEqual({ vaults: [], live: false });
     const stats = await app().request("/v1/stats");
     expect(await stats.json()).toEqual({
       stats: {
@@ -91,6 +91,7 @@ describe("perpetua api", () => {
         uniqueStakers: 0,
         dlmmVolumeUsd: 0,
       },
+      live: false,
     });
   });
 
@@ -125,7 +126,7 @@ describe("perpetua api", () => {
     const res = await young.request(`/v1/pools/${POOL}/yield`);
     expect(res.status).toBe(422);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toMatch(/no complete day/);
+    expect(body.error).toMatch(/has not completed a full day/);
   });
 
   it("reports a failing data api instead of inventing a fee series", async () => {
@@ -140,7 +141,10 @@ describe("perpetua api", () => {
 
     const yield_ = await failing.request(`/v1/pools/${POOL}/yield`);
     expect(yield_.status).toBe(502);
-    expect(await yield_.json()).toEqual({ error: "data api unreachable" });
+    expect(await yield_.json()).toEqual({
+      error:
+        "Meteora's fee data service isn't responding. We can't price this pool right now. Try again in a moment.",
+    });
 
     const series = await failing.request(`/v1/pools/${POOL}/series`);
     expect(series.status).toBe(502);

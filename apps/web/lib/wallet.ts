@@ -39,9 +39,16 @@ function read<T>(value: () => T): T | undefined {
 /// on. Everything else is passed through unchanged: "user rejected the request" is worth reading.
 export function walletError(cause: unknown): string {
   const detail = cause instanceof Error ? cause.message : String(cause);
-  return /proxy/i.test(detail)
-    ? "Your wallet extension refused the request. Reload the page, and reconnect the wallet if it keeps happening."
-    : detail;
+  if (/proxy/i.test(detail)) {
+    return "Your wallet extension blocked the request. Reload the page and reconnect.";
+  }
+  if (/reject|declined|denied|cancel/i.test(detail)) {
+    return "You declined the request. Nothing was sent.";
+  }
+  if (/failed to fetch|network|timeout|timed out/i.test(detail)) {
+    return "We couldn't reach your wallet. Check your connection and try again.";
+  }
+  return "Your wallet could not complete the request. Reconnect and try again.";
 }
 
 export function solanaProvider(): SolanaProvider | undefined {

@@ -8,7 +8,7 @@ import { INPUT } from "@/lib/ui";
 export const QUOTE_TOKENS = [
   {
     label: "SOL",
-    note: "wrapped SOL — works on devnet and mainnet",
+    note: "wrapped SOL. Works on devnet and mainnet.",
     mint: "So11111111111111111111111111111111111111112",
   },
   {
@@ -35,7 +35,7 @@ const CUSTOM = "__custom__";
 export function QuoteTokenSelect({
   value,
   onChange,
-  label = "What buyers pay in",
+  label = "What buyers pay with",
 }: {
   value: string;
   onChange: (mint: string) => void;
@@ -64,7 +64,7 @@ export function QuoteTokenSelect({
             >
               {token.label}
               <span className={active ? "ml-2 text-canvas/60" : "ml-2 text-muted"}>
-                {token.note.split(" — ")[0]}
+                {token.note.split(".")[0]}
               </span>
             </button>
           );

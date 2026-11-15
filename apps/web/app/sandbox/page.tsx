@@ -102,10 +102,10 @@ export default function SandboxPage() {
                 · share token {shortAddress(reference.shareMint)}
               </p>
             </>
-          ) : vaults.isError ? (
+          ) : vaults.isError || vaults.data?.live === false ? (
             <p className="text-[13px] leading-5 text-warn">
-              We could not load the example right now. The section above still works. It reads the
-              chain directly once a wallet is connected.
+              We couldn&apos;t load the example right now. The section above still works. It reads
+              the chain directly once a wallet is connected.
             </p>
           ) : (
             <p className={META}>No vault has been created on devnet yet.</p>

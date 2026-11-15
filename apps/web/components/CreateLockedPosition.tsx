@@ -41,7 +41,7 @@ export function CreateLockedPosition({
         }
       }
     } catch (cause) {
-      setMessage(humanError(cause, "Creating the position"));
+      setMessage(humanError(cause, "create a test pool"));
     } finally {
       setBusy(false);
     }
@@ -49,11 +49,10 @@ export function CreateLockedPosition({
 
   return (
     <section className={`${CARD} space-y-3 p-5`}>
-      <h2 className="text-base font-semibold text-ink">No locked position yet?</h2>
-      <p className="text-[13px] text-muted">
-        Securitizing needs a permanently locked position. This creates one: a fresh DAMM v2 pool
-        owned by your wallet, with its liquidity locked forever. Two signatures, and a little SOL
-        for rent.
+      <h2 className="text-base font-semibold text-ink">No test pool yet?</h2>
+      <p className="text-[13px] leading-5 text-muted">
+        This creates a new Meteora pool owned by your wallet, with its funds locked forever. You
+        will approve two wallet prompts and pay a small network fee.
       </p>
 
       {!ready ? (
@@ -63,9 +62,9 @@ export function CreateLockedPosition({
       ) : null}
 
       {ready && mismatched ? (
-        <p className="text-[13px] text-warn">
-          This wallet is on {network.label}, but this page is set to {cluster}. Switch networks
-          first.
+        <p className="text-[13px] leading-5 text-warn">
+          This wallet is on {network.label}, but this page is set to {cluster}. Switch the wallet
+          network first.
         </p>
       ) : null}
 
@@ -76,7 +75,7 @@ export function CreateLockedPosition({
           disabled={busy || mismatched}
           className={BUTTON_PRIMARY}
         >
-          {busy ? "Waiting for signature…" : "Create a locked position"}
+          {busy ? "Waiting for signature…" : "Create a test pool"}
         </button>
       ) : null}
 
@@ -93,7 +92,7 @@ export function CreateLockedPosition({
           >
             {shortAddress(created.position)} ↗
           </a>{" "}
-          created. Securitize it below.
+          created. Turn it into shares below.
         </p>
       ) : null}
     </section>

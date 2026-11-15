@@ -13,7 +13,7 @@ export function UnderstandButton() {
 
   return (
     <button type="button" onClick={understand} className={BUTTON_PRIMARY}>
-      I understand — continue to Perpetua
+      I understand. Continue to Perpetua.
     </button>
   );
 }

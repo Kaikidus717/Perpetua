@@ -17,6 +17,8 @@ import {
   shortAddress,
   usd,
 } from "@/lib/format";
+import { loadError } from "@/lib/messages";
+import { BUTTON } from "@/lib/ui";
 import { useDebounced } from "@/lib/use-debounced";
 import {
   DISCOUNT_RATE_ANNUAL,
@@ -41,9 +43,9 @@ const DEFAULTS = {
 };
 
 const CASES: Array<{ value: ScenarioName; label: string }> = [
-  { value: "bear", label: "Bear" },
+  { value: "bear", label: "Low" },
   { value: "base", label: "Base" },
-  { value: "bull", label: "Bull" },
+  { value: "bull", label: "High" },
 ];
 
 const CTA =
@@ -122,6 +124,7 @@ export default function TerminalPage() {
     view?.scenarios.find((row) => row.scenario.name === "base") ??
     view?.scenarios[0];
 
+  const scenarioLabel = CASES.find((row) => row.value === scenarioName)?.label ?? "Base";
   const perShare = selected?.fairValuePerShareUsd;
   const ladder = useQuery({
     queryKey: ["ladder", perShare],
@@ -149,16 +152,16 @@ export default function TerminalPage() {
       return `That address is a ${kind}, not a pool. Paste a pool address to price its fees.`;
     }
     if (cluster === "devnet") {
-      return "That is a devnet pool, and fee history is only indexed on mainnet, so it cannot be priced. Its locked positions can still be turned into shares.";
+      return "That is a test-network pool. Fee history is only available for mainnet pools, so we can't price it. Its locked positions can still be turned into shares.";
     }
     const status = apiStatus(valuation.error);
     if (status === 422) {
-      return "That pool has not completed a full day of trading yet, so there is no fee history to price. Come back once it has.";
+      return "This pool has not completed a full day of trading yet. Try again tomorrow.";
     }
     if (status === 404) {
-      return "We cannot find a Meteora pool at that address. Check it and try again.";
+      return "We couldn't find a Meteora pool at that address. Check it and try again.";
     }
-    return "Pricing is unavailable right now. Please try again in a moment.";
+    return "Meteora's fee data service isn't responding. We can't price this pool right now. Try again in a moment.";
   }
 
   function change(patch: Partial<typeof DEFAULTS>) {
@@ -191,17 +194,17 @@ export default function TerminalPage() {
       <header className="space-y-2">
         <h1 className="text-[26px] font-semibold tracking-tight text-ink">Pricing</h1>
         <p className="max-w-xl text-[13px] leading-5 text-muted">
-          What a locked pool&apos;s fee stream is worth today — and what it becomes when your
-          assumptions change.
+          What a locked pool&apos;s future fees are worth today, and how the number changes when you
+          adjust the inputs.
         </p>
         <details className="text-[13px]">
           <summary className="w-fit cursor-pointer text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
-            How this is priced
+            How we estimate this
           </summary>
           <p className="mt-2 max-w-xl leading-5 text-muted">
-            A decay rate is fitted to the trailing fee series, and a 365-day projection is
-            discounted into bear, base and bull cases. Fee history comes from Meteora&apos;s mainnet
-            data API, so pool links open on mainnet. No wallet is needed.
+            We fit a decline to the recent fee history, project it forward, and show a low, base,
+            and high case. Fee history comes from Meteora&apos;s mainnet data service, so pool links
+            open on mainnet. No wallet is needed.
           </p>
         </details>
       </header>
@@ -212,7 +215,7 @@ export default function TerminalPage() {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             aria-label="Pool address to price"
-            placeholder="paste a Meteora pool address…"
+            placeholder="Paste a Meteora pool address…"
             spellCheck={false}
             autoComplete="off"
             enterKeyHint="go"
@@ -225,14 +228,14 @@ export default function TerminalPage() {
           ) : null}
         </div>
         <button type="submit" className={CTA}>
-          Price
+          Estimate
         </button>
       </form>
 
       {!active ? (
         <p className={`${PANEL} px-4 py-5 text-[13px] leading-5 text-muted`}>
-          Nothing priced yet. Paste a mainnet pool&apos;s address above: fee history is indexed
-          there, so a devnet pool can be securitized but not priced.
+          Nothing here yet. Paste a mainnet pool address above. Fee history is only available for
+          mainnet pools, so a test-network pool can be turned into shares but not priced.
         </p>
       ) : null}
 
@@ -276,7 +279,7 @@ export default function TerminalPage() {
             <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
               <div>
                 <p id="fair-value" className={LABEL}>
-                  Fair value · {scenarioName}
+                  Estimated value · {scenarioLabel}
                 </p>
                 <p
                   aria-live="polite"
@@ -288,7 +291,7 @@ export default function TerminalPage() {
               </div>
               <dl className="flex gap-7">
                 <div>
-                  <dt className={LABEL}>Present value</dt>
+                  <dt className={LABEL}>Value today</dt>
                   <dd className="tnum mt-1 text-[15px] text-ink">
                     {compactUsd(selected?.presentValueUsd)}
                   </dd>
@@ -300,7 +303,7 @@ export default function TerminalPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className={LABEL}>APR at fair value</dt>
+                  <dt className={LABEL}>Yearly return</dt>
                   <dd className="tnum mt-1 text-[15px] text-ink">
                     {pct(view.impliedAprAtFairValue, 1)}
                   </dd>
@@ -311,7 +314,7 @@ export default function TerminalPage() {
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-[13px] font-medium text-ink">Daily fees</h2>
               <Segmented
-                label="Fit window"
+                label="History window"
                 value={windowDays}
                 options={WINDOWS.map((days) => ({ value: days, label: `${days}d` }))}
                 onChange={setWindowDays}
@@ -329,9 +332,18 @@ export default function TerminalPage() {
             ) : (
               <div className="mt-1.5 h-[190px] animate-pulse rounded-lg bg-canvas motion-reduce:animate-none" />
             )}
+            {series.isError ? (
+              <div className={`${PANEL} mt-2 space-y-2 p-3 text-[13px]`}>
+                <p className="text-ink">We couldn&apos;t load the daily fee chart.</p>
+                <p className="text-muted">{loadError(series.error, "the daily fee chart")}</p>
+                <button type="button" onClick={() => void series.refetch()} className={BUTTON}>
+                  Try again
+                </button>
+              </div>
+            ) : null}
             <p className="mt-2 text-[11px] leading-4 text-muted">
-              Trailing {windowDays} days. The decay rate is fitted to this same window, so the fair
-              value above moves when you change it.
+              Last {windowDays} days. We fit the decline to this window, so the estimate moves when
+              you change it.
             </p>
           </section>
 
@@ -350,7 +362,7 @@ export default function TerminalPage() {
 
             <div className="mt-4 space-y-5">
               <ValueSlider
-                label="Liquidity share"
+                label="Share of fees"
                 value={Math.round(assumptions.liquidityShare * 100)}
                 min={1}
                 max={100}
@@ -358,7 +370,7 @@ export default function TerminalPage() {
                 format={(percent) => `${percent}%`}
                 minLabel="1%"
                 maxLabel="100%"
-                hint="How much of the position's fees this share owns."
+                hint="How much of the pool's fees this position earns."
               />
               <ValueSlider
                 label="Required return"
@@ -369,7 +381,7 @@ export default function TerminalPage() {
                 format={(percent) => `${percent}% / yr`}
                 minLabel="0%"
                 maxLabel="100%"
-                hint="The yearly return you demand before the stream is worth buying."
+                hint="The yearly return you want before these fees are worth buying."
               />
               <ValueSlider
                 label="Protocol fee"
@@ -388,13 +400,12 @@ export default function TerminalPage() {
             <p className="mt-4 border-t border-line pt-3 text-[12px] leading-4 text-muted">
               {moved ? (
                 <>
-                  At these assumptions the pool is worth{" "}
+                  At these inputs, the pool is worth{" "}
                   <span className="tnum text-ink">{compactUsd(after)}</span> instead of{" "}
-                  <span className="tnum text-ink">{compactUsd(before)}</span> — the model&apos;s
-                  default.
+                  <span className="tnum text-ink">{compactUsd(before)}</span>.
                 </>
               ) : (
-                <>Every control re-prices the pool; the figure on the left follows.</>
+                <>Each input changes the estimate on the left.</>
               )}
             </p>
           </aside>
@@ -405,7 +416,7 @@ export default function TerminalPage() {
         <>
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-[13px] font-medium text-ink">Cases</h2>
+              <h2 className="text-[13px] font-medium text-ink">Scenarios</h2>
               <Segmented
                 label="Case"
                 value={scenarioName}
@@ -429,15 +440,16 @@ export default function TerminalPage() {
                       }`}
                     >
                       <span className="flex items-baseline justify-between gap-2">
-                        <span className="text-[13px] font-medium capitalize text-ink">
-                          {row.scenario.name}
+                        <span className="text-[13px] font-medium text-ink">
+                          {CASES.find((entry) => entry.value === row.scenario.name)?.label ??
+                            row.scenario.name}
                         </span>
                         <span className="tnum text-[13px] text-ink">
                           {usd(row.fairValuePerShareUsd, 6)}
                         </span>
                       </span>
                       <span className="mt-1 flex items-baseline justify-between gap-2 text-[11px] text-muted">
-                        <span className="tnum">{pct(row.scenario.lambda, 2)}/day decay</span>
+                        <span className="tnum">{pct(row.scenario.lambda, 2)} daily decline</span>
                         <span className="tnum">
                           {row.scenario.volumeMultiplier.toFixed(2)}× volume
                         </span>
@@ -450,7 +462,7 @@ export default function TerminalPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-[13px] font-medium text-ink">Risk</h2>
+            <h2 className="text-[13px] font-medium text-ink">Risks</h2>
             <div className="[&_ul]:justify-start">
               <RiskFlags flags={view.riskFlags} />
             </div>
@@ -462,11 +474,11 @@ export default function TerminalPage() {
         <section className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 className="text-[13px] font-medium text-ink">
-              Planned ask ladder · {scenarioName}
+              Planned sale ladder · {scenarioLabel}
             </h2>
             <p className="tnum text-[11px] text-muted">
-              {ladder.data.plan.bins.length} bins · {usd(ladder.data.plan.rangeLowUsd, 6)} –{" "}
-              {usd(ladder.data.plan.rangeHighUsd, 6)} · avg{" "}
+              {ladder.data.plan.bins.length} price levels · {usd(ladder.data.plan.rangeLowUsd, 6)}{" "}
+              to {usd(ladder.data.plan.rangeHighUsd, 6)} · average{" "}
               {usd(ladder.data.plan.weightedAveragePriceUsd, 6)}
             </p>
           </div>
@@ -475,13 +487,15 @@ export default function TerminalPage() {
           </div>
           <details className="text-[12px]">
             <summary className="w-fit cursor-pointer text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
-              See the exact bins
+              See every price level
             </summary>
             <div className="mt-2 overflow-hidden rounded-lg border border-line">
               <table className="w-full text-left text-[12px]">
                 <thead className="bg-panel">
                   <tr>
-                    <th className="border-b border-line px-3 py-2 font-medium text-muted">Bin</th>
+                    <th className="border-b border-line px-3 py-2 font-medium text-muted">
+                      Price level
+                    </th>
                     <th className="border-b border-line px-3 py-2 text-right font-medium text-muted">
                       Price
                     </th>

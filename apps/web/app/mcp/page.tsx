@@ -54,7 +54,7 @@ const CLIENTS: Array<{ name: string; how: string }> = [
 const TOOLS: Array<{ name: string; what: string }> = [
   {
     name: "where_is_address",
-    what: "Which network owns an address, and what it is — pool, wallet, mint or vault. The step that stops everything else asking the wrong chain.",
+    what: "Which network owns an address, and what it is: pool, wallet, token or vault.",
   },
   {
     name: "list_clusters",
@@ -62,7 +62,7 @@ const TOOLS: Array<{ name: string; what: string }> = [
   },
   {
     name: "price_position",
-    what: "What a locked position — or a whole pool — is worth today as a stream of future fees, with a fair-value range and the risks behind it.",
+    what: "What a locked position, or a whole pool, is worth today as future fees. Includes a value range and the risks.",
   },
   {
     name: "get_report",
@@ -74,7 +74,7 @@ const TOOLS: Array<{ name: string; what: string }> = [
   },
   {
     name: "find_positions",
-    what: "What a wallet actually holds in DAMM v2, and whether each position can be turned into shares.",
+    what: "What a wallet holds in Meteora pools, and whether each position can become shares.",
   },
   {
     name: "list_vaults",
@@ -82,11 +82,11 @@ const TOOLS: Array<{ name: string; what: string }> = [
   },
   {
     name: "simulate_preset",
-    what: "Try a launch fee split before you commit to one — including priced against a live pool.",
+    what: "Try a launch fee split before you commit. You can price it against a live pool.",
   },
   {
     name: "get_sale_plan",
-    what: "The ask ladder a share sale would post: every bin, its price, and how many shares sit there.",
+    what: "The sale ladder a share sale would post: every price level, its price, and how many shares sit there.",
   },
   {
     name: "list_sale_presets",
@@ -98,7 +98,7 @@ const TOOLS: Array<{ name: string; what: string }> = [
   },
   {
     name: "build_launch_tx",
-    what: "The transaction that creates a bonding-curve config and its pool with the split you chose — on mainnet or devnet.",
+    what: "The transaction that creates a launch config and its pool with your split, on mainnet or devnet.",
   },
   {
     name: "build_securitize_tx",
@@ -135,7 +135,7 @@ const TOOLS: Array<{ name: string; what: string }> = [
 ];
 
 const PROMPTS = [
-  "What is this locked position worth as a fee stream, and what APR does that imply?",
+  "What is this locked position worth as future fees, and what yearly return does that imply?",
   "Which vaults exist, and how much have they paid out?",
   "Give me a report card for this pool over the last 30 days.",
   "Try a launch fee split with 20% permanently locked and tell me if it holds up.",
@@ -143,7 +143,7 @@ const PROMPTS = [
   "What does this wallet own that could be turned into shares?",
   "Build the transaction to turn this locked position into shares.",
   "Walk me through launching a token with half the liquidity locked, and build the transactions.",
-  "What would my shares sell for as an ask ladder?",
+  "What would my shares sell for as a sale ladder?",
 ];
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
@@ -193,7 +193,7 @@ export default function McpPage() {
     <div className={PAGE}>
       <PageHeader
         title="Use with AI"
-        description="Point any assistant at Perpetua. It prices positions, reads how a pool actually performed, and builds transactions for you to sign — from the same data this site uses."
+        description="Connect an assistant to Perpetua through the Model Context Protocol. It can price a pool, read its fee history, and prepare transactions for you to sign."
       />
 
       <Section title="Connect" description="One address. Nothing to install.">
@@ -214,8 +214,7 @@ export default function McpPage() {
             </li>
             <li>
               <span className="font-medium">2.</span> Paste it wherever your assistant keeps its
-              connections — the table below says where that is — and restart the app if it asks you
-              to.
+              connections. The table below says where that is. Restart the app if it asks you to.
             </li>
             <li>
               <span className="font-medium">3.</span> Ask about a pool, a locked position or a
@@ -305,31 +304,27 @@ export default function McpPage() {
         </div>
       </details>
 
-      <Section title="What you get back">
-        <ul className="space-y-3 text-[13px] text-ink">
+      <Section title="How it stays safe">
+        <ul className="space-y-3 text-[13px] leading-5 text-ink">
           <li className={`${CARD_MUTED} p-4`}>
-            <span className="font-medium">Your keys never move.</span> Perpetua never asks for a
-            private key. When your assistant builds a transaction it comes back unsigned, for your
-            own wallet to sign — or nothing happens.
+            <span className="font-medium">Perpetua never asks for a private key.</span> Transactions
+            come back unsigned, for your wallet to sign.
           </li>
           <li className={`${CARD_MUTED} p-4`}>
-            <span className="font-medium">Numbers you can trace.</span> Every answer carries where
-            it came from and when it was read, so your assistant can show its working instead of
-            asking you to take a figure on faith.
+            <span className="font-medium">Every answer says when it was read.</span> The envelope
+            also names the endpoints used, so an assistant can show its source.
           </li>
           <li className={`${CARD_MUTED} p-4`}>
-            <span className="font-medium">One source of truth.</span> Your assistant reads the same
-            API this site does, so the number it reports and the number you see here are the same
-            calculation.
+            <span className="font-medium">It reads the same API as this site.</span> The number an
+            assistant reports and the number here come from the same calculation.
           </li>
         </ul>
       </Section>
 
-      <Section title="Building something instead?">
+      <Section title="Use the API directly">
         <div className={`${CARD} space-y-3 p-5 text-[13px] text-ink`}>
           <p>
-            Everything your assistant can reach is public, and every answer is available over plain
-            HTTP if you would rather fetch it yourself:
+            Every answer is also available over plain HTTP if you would rather fetch it yourself:
           </p>
           <CodeBlock
             code={`curl -s "${ENDPOINT.replace("/mcp", "/v1/pools/<pool>/yield")}" | jq .valuation`}

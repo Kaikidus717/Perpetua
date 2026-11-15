@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { UnderstandButton } from "@/components/UnderstandButton";
-import { BUTTON, CARD, CARD_MUTED, CHIP, LINK, META, PAGE } from "@/lib/ui";
+import { BUTTON, CARD, CHIP, LINK, META, PAGE } from "@/lib/ui";
 import { WALKTHROUGH_COOKIE, walkthroughSeen } from "@/lib/walkthrough";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -24,13 +24,6 @@ export default async function WalkthroughPage({
         title={firstVisit ? "Welcome to Perpetua" : "How Perpetua works"}
         description="Perpetua turns the fees from a locked Meteora pool into shares. You can buy them, hold them, or sell them. This page shows what you can do and what we check before you sign."
       />
-
-      {firstVisit ? (
-        <output className={`${CARD_MUTED} block px-4 py-3 text-[13px] leading-5 text-muted`}>
-          <span className="text-ink">First visit.</span> Read the short tour below. The button at
-          the end takes you into the app.
-        </output>
-      ) : null}
 
       <p className={`${CARD} p-4 text-[13px] leading-6 text-muted`}>
         A locked pool keeps earning trading fees. Perpetua puts the locked position in a vault and

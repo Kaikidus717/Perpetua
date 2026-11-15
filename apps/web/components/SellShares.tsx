@@ -5,7 +5,7 @@ import { QUOTE_TOKENS, QuoteTokenSelect } from "@/components/QuoteTokenSelect";
 import { Spinner } from "@/components/Spinner";
 import { api } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl, usd } from "@/lib/format";
-import { humanError } from "@/lib/messages";
+import { humanError, loadError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
 import { openSale, seedLadder } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CARD_MUTED, INPUT, LINK } from "@/lib/ui";
@@ -14,12 +14,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 const VAULT_CLUSTER = "devnet";
-
-/// The API's own words behind a failed call, when it sent any. Used to show a reason that the card
-/// cannot already explain by itself — the fee-history case is explained in full, so it is not echoed.
-function detail(error: unknown): string {
-  return error instanceof Error ? error.message : String(error ?? "");
-}
 
 export function priceBasis(
   fairValue: number | undefined,
@@ -92,7 +86,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
   function createMarket() {
     if (!provider || !preset || !price) return;
     const opening = price;
-    void run("Create the market", async () => {
+    void run("open the market", async () => {
       const result = await openSale(
         provider,
         {
@@ -106,15 +100,13 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         VAULT_CLUSTER,
       );
       setMarket(result);
-      setMessage(
-        result.created ? `Market created: ${result.pool}` : `Market already exists: ${result.pool}`,
-      );
+      setMessage(result.created ? "The market is open." : "This market is already open.");
     });
   }
 
   function listLadder() {
     if (!provider || !preset || !market || !plan.data) return;
-    void run("List the ladder", async () => {
+    void run("post your shares", async () => {
       const result = await seedLadder(
         provider,
         {
@@ -127,16 +119,15 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         VAULT_CLUSTER,
       );
       setListing(result);
-      setMessage(`Ladder listed in position ${result.positionAddress}`);
+      setMessage("Your shares are listed.");
     });
   }
 
   return (
     <section className={`${CARD} space-y-4 p-5`}>
-      <h2 className="text-base font-semibold text-ink">Sell shares on the open market</h2>
+      <h2 className="text-base font-semibold text-ink">Sell your shares</h2>
       <p className="text-[13px] text-muted">
-        Offers the shares as a one-sided ask ladder on Meteora DLMM, priced around fair value, so
-        buyers trade against a market instead of negotiating off it.
+        List your shares at a range of prices. Buyers trade against the market at the price you set.
       </p>
 
       {!ready ? (
@@ -148,22 +139,20 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
       )}
 
       {ready && wrongNetwork ? (
-        <p className="text-[13px] text-warn">
-          This wallet is on {network.label}. Creating the market and listing the ladder need the
-          vault&apos;s share token, which lives on devnet — switch the wallet to devnet (Phantom:
-          Settings → Developer Settings → Change Network → Devnet) and reload to sell these.
+        <p className="text-[13px] leading-5 text-warn">
+          This wallet is on {network.label}. Opening a market and selling shares run on the test
+          network. Switch Phantom to Settings → Developer Settings → Change Network → Devnet, then
+          reload.
         </p>
       ) : null}
       {ready && network.label && !wrongNetwork ? (
-        <p className="text-[12px] text-muted">
-          This wallet is on {network.label}, where these shares live.
-        </p>
+        <p className="text-[12px] text-muted">These shares live on {network.label}.</p>
       ) : null}
 
       <QuoteTokenSelect value={quoteMint} onChange={setQuoteMint} />
 
       <label className="block space-y-1 text-[13px]">
-        <span className="text-ink">Bin step</span>
+        <span className="text-ink">Price step</span>
         <select
           value={presetIndex}
           onChange={(event) => setPresetIndex(Number(event.target.value))}
@@ -171,13 +160,13 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         >
           {(presets.data?.presets ?? []).map((option, index) => (
             <option key={option.address} value={index}>
-              {option.binStep} bps — {shortAddress(option.address)}
+              {option.binStep} bps · {shortAddress(option.address)}
             </option>
           ))}
         </select>
         {presets.isError ? (
           <span className="block text-[12px] text-warn">
-            Market presets are unavailable right now. Try again in a moment.
+            {loadError(presets.error, "market settings")}
           </span>
         ) : null}
       </label>
@@ -192,12 +181,11 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
       {basis === "typed" ? (
         <div className={`${CARD_MUTED} space-y-2 p-3 text-[13px]`}>
           <p className="text-warn">
-            This pool cannot be priced from Meteora&apos;s fee history, because that service covers
-            mainnet only — a pool on devnet never has one. Set the opening price per share yourself
-            below and the ladder is built around it.
+            We couldn&apos;t use fee history to price this pool. Set an opening price below and the
+            market is built around it.
           </p>
-          {valuation.isError && !/fee history/i.test(detail(valuation.error)) ? (
-            <p className="text-muted">{detail(valuation.error)}</p>
+          {valuation.isError ? (
+            <p className="text-muted">{loadError(valuation.error, "this pool's fee history")}</p>
           ) : null}
           <label className="block space-y-1.5">
             <span className="text-[12px] text-muted">Opening price per share (USD)</span>
@@ -212,7 +200,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
       ) : null}
 
       {price ? (
-        <div className={`${CARD_MUTED} grid grid-cols-3 gap-3 p-3 text-[13px]`}>
+        <div className={`${CARD_MUTED} grid grid-cols-1 gap-3 p-3 text-[13px] sm:grid-cols-3`}>
           <div>
             <div className="text-[12px] text-muted">
               {basis === "computed" ? "Fair value / share" : "Opening price / share"}
@@ -220,10 +208,10 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
             <div className="tnum text-ink">{usd(price, 6)}</div>
           </div>
           <div>
-            <div className="text-[12px] text-muted">Ask range</div>
+            <div className="text-[12px] text-muted">Price range</div>
             <div className="tnum text-ink">
               {plan.data
-                ? `${usd(plan.data.plan.rangeLowUsd, 6)} – ${usd(plan.data.plan.rangeHighUsd, 6)}`
+                ? `${usd(plan.data.plan.rangeLowUsd, 6)} to ${usd(plan.data.plan.rangeHighUsd, 6)}`
                 : "…"}
             </div>
           </div>
@@ -234,13 +222,17 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
         </div>
       ) : null}
 
+      {plan.isError ? (
+        <p className="text-[13px] leading-5 text-warn">{loadError(plan.error, "the price plan")}</p>
+      ) : null}
+
       {/* The numbers above, as a shape: where the asks sit, how many shares wait at each price, and
           what the pair actually is. Same `plan` object the listing transaction uses. */}
       {plan.data ? (
         <PoolPreview
           bins={plan.data.plan.bins}
           binStep={preset?.binStep}
-          shareLabel="pFEE"
+          shareLabel="Share token"
           quoteLabel={QUOTE_TOKENS.find((token) => token.mint === quoteMint)?.label ?? "quote"}
         />
       ) : null}
@@ -252,7 +244,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
           disabled={!ready || busy !== null || !preset || !price || wrongNetwork}
           className={BUTTON_PRIMARY}
         >
-          {busy === "Create the market" ? "Waiting for signature…" : "Create the market"}
+          {busy === "open the market" ? "Waiting for signature…" : "Open the market"}
         </button>
         <button
           type="button"
@@ -260,11 +252,11 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
           disabled={!ready || busy !== null || !market || !plan.data || wrongNetwork}
           className={BUTTON_SECONDARY}
         >
-          {busy === "List the ladder" ? "Waiting for signature…" : "List the ladder"}
+          {busy === "post your shares" ? "Waiting for signature…" : "Post shares for sale"}
         </button>
       </div>
 
-      {message ? <p className="break-all text-[13px] text-ink">{message}</p> : null}
+      {message ? <p className="text-[13px] leading-5 text-warn">{message}</p> : null}
       {market ? (
         <p className="text-[13px] text-muted">
           Market{" "}
@@ -280,7 +272,7 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
       ) : null}
       {listing ? (
         <p className="text-[13px] text-muted">
-          Ladder position{" "}
+          Listing{" "}
           <a
             href={txUrl(listing.signature)}
             target="_blank"

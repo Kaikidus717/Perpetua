@@ -17,29 +17,44 @@ export function VaultsPage() {
   const vaults = useQuery({ queryKey: ["vaults"], queryFn: api.vaults, refetchInterval: LIVE_MS });
   const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats, refetchInterval: LIVE_MS });
   const offline = stats.isError || vaults.isError;
+  const degraded = vaults.data?.live === false || stats.data?.live === false;
   const totals = stats.data?.stats;
 
   return (
     <div className={PAGE}>
       <PageHeader
-        title="Own a slice of a pool's fees"
-        description="Some Meteora pools are locked forever, so the fees they earn keep arriving. Perpetua turns that income into 1,000,000 shares per vault — buy them, stake them, and collect your cut of every swap."
+        title="Own a share of a pool's fees"
+        description="Some Meteora pools are locked forever. Their trading fees keep coming in. Perpetua turns those fees into 1,000,000 shares you can buy, hold, or sell. Holders collect a share of every trade."
         actions={
           <>
             <Link href="/securitize" className={BUTTON_PRIMARY}>
-              Create shares
+              Turn a pool into shares
             </Link>
             <Link href="/terminal" className={BUTTON}>
-              Price a pool
+              See what a pool is worth
             </Link>
           </>
         }
       />
 
-      {offline ? (
-        <output className={`${CARD_MUTED} block px-4 py-3 text-[13px] text-muted`}>
-          Live figures are unavailable right now. Everything below fills back in as soon as the
-          connection returns.
+      {offline || degraded ? (
+        <output className={`${CARD_MUTED} block space-y-2 px-4 py-3 text-[13px] text-muted`}>
+          <span className="block text-ink">
+            {offline ? "We couldn't load the live vaults." : "Live vault data is unavailable."}
+          </span>
+          <span className="block">
+            {offline ? "Check your connection and try again." : "Showing the saved list."}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              void vaults.refetch();
+              void stats.refetch();
+            }}
+            className={BUTTON}
+          >
+            Try again
+          </button>
         </output>
       ) : null}
 
@@ -48,23 +63,25 @@ export function VaultsPage() {
         <div className={`${CARD} p-5`}>
           <p className={EYEBROW}>Fees paid to holders</p>
           <p className={`${NUM_LG} mt-2`}>{compactUsd(totals?.feesDistributedUsd)}</p>
-          <p className={`${META} mt-2`}>
-            across {count(totals?.vaults)} vaults · {count(totals?.uniqueStakers)} holders
-          </p>
+          {totals ? (
+            <p className={`${META} mt-2`}>
+              across {count(totals.vaults)} vaults · {count(totals.uniqueStakers)} holders
+            </p>
+          ) : null}
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Stat
-            label="Securitized"
+            label="Positions turned into shares"
             value={count(totals?.positionsSecuritized)}
-            hint="locked positions"
+            hint="locked pools"
           />
           <Stat label="Trading volume" value={compactUsd(totals?.dlmmVolumeUsd)} hint="all pools" />
         </div>
       </section>
 
       <Section
-        title="Live vaults"
-        description="One row per locked position that has been turned into shares."
+        title="Pools with shares"
+        description="Each row is a locked pool that has been turned into shares."
       >
         {vaults.isPending ? (
           <div className={`${CARD_MUTED} h-24 animate-pulse motion-reduce:animate-none`} />
@@ -80,16 +97,16 @@ export function VaultsPage() {
         </summary>
         <ol className="mt-3 space-y-2 leading-6 text-muted">
           <li>
-            <span className="text-ink">1.</span> A creator locks part of a Meteora pool&apos;s
-            liquidity forever — nobody can withdraw it, not even them.
+            <span className="text-ink">1.</span> A creator locks part of a Meteora pool forever.
+            Nobody can withdraw it, not even them.
           </li>
           <li>
-            <span className="text-ink">2.</span> Perpetua takes custody of that locked position and
-            issues 1,000,000 shares against it.
+            <span className="text-ink">2.</span> Perpetua holds that locked position and creates
+            1,000,000 shares.
           </li>
           <li>
-            <span className="text-ink">3.</span> Every swap pays a fee; staked shares collect it,
-            and you can claim whenever you like.
+            <span className="text-ink">3.</span> Every trade pays a fee. Staked shares earn it, and
+            holders can collect whenever they like.
           </li>
         </ol>
       </details>

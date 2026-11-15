@@ -5,8 +5,9 @@ import { Section } from "@/components/Section";
 import { SellShares } from "@/components/SellShares";
 import { Spinner } from "@/components/Spinner";
 import { VaultActions } from "@/components/VaultActions";
-import { api } from "@/lib/api";
+import { api, apiStatus } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl } from "@/lib/format";
+import { loadError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
 import {
   BUTTON,
@@ -50,6 +51,31 @@ function stakedPercent(base: string): number {
   }
 }
 
+const EVENT_LABELS: Record<string, string> = {
+  ConfigInitialized: "Vault configured",
+  VaultCreated: "Vault created",
+  FeesClaimed: "Pool fees collected",
+  Staked: "Shares staked",
+  Unstaked: "Shares unstaked",
+  Harvested: "Fees collected",
+  RiskFlagsSet: "Risk flags updated",
+  EntryPaused: "Entry paused or resumed",
+};
+
+function eventLabel(name: string): string {
+  return EVENT_LABELS[name] ?? name.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function eventDate(blockTime: number | null): string {
+  if (blockTime === null) return "Date unknown";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(blockTime * 1000));
+}
+
 export default function VaultPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -71,13 +97,23 @@ export default function VaultPage() {
   });
 
   if (vault.isError) {
+    const missing = apiStatus(vault.error) === 404;
     return (
       <div className={PAGE}>
-        <div className={`${CARD_MUTED} max-w-lg p-4`}>
-          <p className="text-[13px] text-ink">We couldn&apos;t find that vault.</p>
-          <p className={`${META} mt-1`}>
-            Check the address — a vault link ends in its on-chain address, not its name.
+        <div className={`${CARD_MUTED} max-w-lg space-y-3 p-4`}>
+          <h1 className="text-[15px] font-semibold text-ink">
+            {missing ? "We couldn't find that vault." : "We couldn't load this vault."}
+          </h1>
+          <p className={`${META} leading-5`}>
+            {missing
+              ? "Check the address. A vault link ends in its address, not its name."
+              : loadError(vault.error, "this vault")}
           </p>
+          {!missing ? (
+            <button type="button" onClick={() => void vault.refetch()} className={BUTTON}>
+              Try again
+            </button>
+          ) : null}
         </div>
       </div>
     );
@@ -95,7 +131,7 @@ export default function VaultPage() {
           {network.label ? <span className={CHIP}>{network.label} wallet</span> : null}
           {/* The next thing most people want from a vault they own: a way into the share flow. */}
           <Link href="/securitize" className={`${BUTTON} ml-auto`}>
-            Create shares
+            Turn a pool into shares
           </Link>
         </div>
         <a
@@ -107,14 +143,11 @@ export default function VaultPage() {
           {address} ↗
         </a>
         <p className={LEDE}>
-          Hold shares to earn a slice of the fees this locked position keeps producing.
+          Hold shares to earn a share of the fees this locked pool keeps earning.
         </p>
-        {/* A wallet on the wrong chain cannot sign anything below, and finding that out at the wallet
-            is worse than reading it here. */}
         {network.cluster === "mainnet-beta" ? (
           <p className={`${META} text-warn`}>
-            Staking, harvesting and selling shares need devnet — that is the only cluster the vault
-            program is deployed on.
+            Staking and selling shares run on the test network. Switch to devnet to use them.
           </p>
         ) : null}
       </header>
@@ -134,13 +167,13 @@ export default function VaultPage() {
             </div>
           </div>
           <div className={`${CARD} p-4`}>
-            <p className={EYEBROW}>Fees claimed A / B</p>
+            <p className={EYEBROW}>Fees collected, token A / token B</p>
             <p className="tnum mt-2 text-[15px] text-ink">
               {data.totalClaimedA} / {data.totalClaimedB}
             </p>
-            <p className={`${META} mt-1`}>base units of each fee token</p>
+            <p className={`${META} mt-1`}>in each token&apos;s smallest unit</p>
             <p className={`${META} mt-3`}>
-              Share mint{" "}
+              Share token{" "}
               <a
                 href={explorerUrl(data.shareMint)}
                 target="_blank"
@@ -158,15 +191,29 @@ export default function VaultPage() {
 
       {data ? <SellShares shareMint={data.shareMint} pool={data.pool} /> : null}
 
-      <Section title="Activity" description="Stakes, harvests and claims, as they land on-chain.">
+      <Section title="Activity" description="Stakes and fee collections from this vault.">
         {events.isPending ? (
           <p className={`${META} flex items-center gap-2`}>
             <Spinner label="Loading activity" />
             Loading activity…
           </p>
         ) : null}
-        {events.data?.events.length === 0 ? (
-          <p className={META}>Nothing has happened yet. Stake, then crank and harvest.</p>
+        {events.isError ? (
+          <div className={`${CARD_MUTED} space-y-2 p-4`}>
+            <p className="text-[13px] text-ink">We couldn&apos;t load the activity.</p>
+            <p className={META}>{loadError(events.error, "this activity")}</p>
+            <button type="button" onClick={() => void events.refetch()} className={BUTTON}>
+              Try again
+            </button>
+          </div>
+        ) : null}
+        {events.data?.live === false ? (
+          <p className="text-[13px] leading-5 text-warn">
+            We couldn&apos;t reach Solana for the latest activity. Showing the saved activity.
+          </p>
+        ) : null}
+        {events.data?.live !== false && events.data?.events.length === 0 ? (
+          <p className={META}>No activity yet. Stake shares, then collect pool fees.</p>
         ) : null}
         {events.data && events.data.events.length > 0 ? (
           <ol className={`${CARD} divide-y divide-line`}>
@@ -180,17 +227,17 @@ export default function VaultPage() {
                     aria-hidden="true"
                     className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink/40"
                   />
-                  <span className="truncate text-[13px] text-ink">{event.name}</span>
+                  <span className="truncate text-[13px] text-ink">{eventLabel(event.name)}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-3">
-                  <span className={`${META} tnum`}>slot {event.slot}</span>
+                  <span className={`${META} tnum`}>{eventDate(event.blockTime)}</span>
                   <a
                     href={txUrl(event.signature)}
                     target="_blank"
                     rel="noreferrer"
                     className={`font-mono text-[11px] text-muted ${LINK}`}
                   >
-                    {shortAddress(event.signature)} ↗
+                    Transaction ↗
                   </a>
                 </span>
               </li>
@@ -203,7 +250,7 @@ export default function VaultPage() {
       {data ? (
         <details className={`${CARD} p-4 text-[13px]`}>
           <summary className="w-fit cursor-pointer text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
-            The accounts behind this vault
+            Addresses for this vault
           </summary>
           <dl className="mt-3 divide-y divide-line">
             {[

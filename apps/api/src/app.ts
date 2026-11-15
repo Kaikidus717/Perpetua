@@ -14,6 +14,7 @@ import {
   type ValuationRiskInput,
   type VaultEvent,
   type VaultSummary,
+  customerValidationError,
 } from "@perpetua/shared";
 import { valuePosition } from "@perpetua/valuation";
 import { type Connection, PublicKey } from "@solana/web3.js";
@@ -120,17 +121,21 @@ function vaultConnection(deps: AppDeps): Connection | undefined {
 /// How long a chain read of the vault registry is reused, so a warm instance answers the landing page
 /// from memory instead of hitting the RPC on every request.
 const VAULT_CACHE_MS = 30_000;
-const vaultCache = new Map<string, { at: number; vaults: VaultSummary[] }>();
+const vaultCache = new Map<string, { at: number; vaults: VaultSummary[]; live: boolean }>();
 
 /// Every vault the program holds, read from `program.account.vault.all()`. `null` on any failure, so a
 /// flaky RPC degrades to "no vaults" rather than a 500 on the landing page; a previous successful
 /// read is served stale rather than dropped.
-async function chainVaults(deps: AppDeps): Promise<VaultSummary[] | null> {
+async function chainVaults(
+  deps: AppDeps,
+): Promise<{ vaults: VaultSummary[]; live: boolean } | null> {
   const connection = vaultConnection(deps);
   if (!connection) return null;
   const key = deps.vaultCluster ?? "devnet";
   const cached = vaultCache.get(key);
-  if (cached && Date.now() - cached.at < VAULT_CACHE_MS) return cached.vaults;
+  if (cached && Date.now() - cached.at < VAULT_CACHE_MS) {
+    return { vaults: cached.vaults, live: cached.live };
+  }
   try {
     const provider = readonlyProvider(connection, PublicKey.default);
     const rows = await PerpetuaVaultClient.create(provider).listVaults();
@@ -145,20 +150,24 @@ async function chainVaults(deps: AppDeps): Promise<VaultSummary[] | null> {
       totalClaimedB: account.totalClaimedB.toString(),
       createdAt: Number(account.createdAt.toString()),
     }));
-    vaultCache.set(key, { at: Date.now(), vaults });
-    return vaults;
-  } catch {
-    return cached?.vaults ?? null;
+    vaultCache.set(key, { at: Date.now(), vaults, live: true });
+    return { vaults, live: true };
+  } catch (error) {
+    console.error("[vault registry]", error);
+    return cached ? { vaults: cached.vaults, live: cached.live } : { vaults: [], live: false };
   }
 }
 
 /// What the Vaults page shows: the chain's vaults, plus anything an indexer has stored that the chain
 /// does not already hold. The chain wins a collision, because it is the authority.
-async function mergedVaults(deps: AppDeps): Promise<VaultSummary[]> {
+async function mergedVaults(deps: AppDeps): Promise<{ vaults: VaultSummary[]; live: boolean }> {
   const [chain, indexed] = await Promise.all([chainVaults(deps), deps.store.listVaults()]);
-  if (!chain) return indexed;
-  const known = new Set(chain.map((vault) => vault.address));
-  return [...chain, ...indexed.filter((vault) => !known.has(vault.address))];
+  if (!chain) return { vaults: indexed, live: false };
+  const known = new Set(chain.vaults.map((vault) => vault.address));
+  return {
+    vaults: [...chain.vaults, ...indexed.filter((vault) => !known.has(vault.address))],
+    live: chain.live,
+  };
 }
 
 /// How far back the activity feed looks, and how long a result is reused. A vault page re-reads every
@@ -166,23 +175,30 @@ async function mergedVaults(deps: AppDeps): Promise<VaultSummary[]> {
 const EVENTS_LOOKBACK = 15;
 const EVENTS_CACHE_LIMIT = 50;
 const EVENTS_CACHE_MS = 20_000;
-const eventsCache = new Map<string, { at: number; events: VaultEvent[] }>();
+const eventsCache = new Map<string, { at: number; events: VaultEvent[]; live: boolean }>();
 
 /// A vault's activity feed: what the chain recorded for it, plus anything an indexer has stored that
 /// the chain does not already show. Decoded on demand from transaction logs, so no indexer runs.
-async function vaultEvents(deps: AppDeps, id: string): Promise<VaultEvent[]> {
+async function vaultEvents(
+  deps: AppDeps,
+  id: string,
+): Promise<{ events: VaultEvent[]; live: boolean }> {
   const key = `${deps.vaultCluster ?? "devnet"}:${id}`;
   const cached = eventsCache.get(key);
-  if (cached && Date.now() - cached.at < EVENTS_CACHE_MS) return cached.events;
+  if (cached && Date.now() - cached.at < EVENTS_CACHE_MS) {
+    return { events: cached.events, live: cached.live };
+  }
 
   const indexed = await deps.store.listVaultEvents(id, EVENTS_CACHE_LIMIT);
   let chain: VaultEvent[] = [];
+  let live = false;
   const connection = vaultConnection(deps);
   if (connection) {
     try {
       chain = await readVaultEvents(connection, new PublicKey(id), EVENTS_LOOKBACK);
-    } catch {
-      chain = [];
+      live = true;
+    } catch (error) {
+      console.error("[vault events]", error);
     }
   }
 
@@ -191,8 +207,8 @@ async function vaultEvents(deps: AppDeps, id: string): Promise<VaultEvent[]> {
     ...chain,
     ...indexed.filter((event) => !seen.has(`${event.signature}:${event.name}`)),
   ].sort((a, b) => b.slot - a.slot);
-  eventsCache.set(key, { at: Date.now(), events: merged });
-  return merged;
+  eventsCache.set(key, { at: Date.now(), events: merged, live });
+  return { events: merged, live };
 }
 
 /// What an account is, told by the program that owns it. Enough to label an address in the UI without
@@ -311,6 +327,14 @@ const saleQuery = z.object({
   binCount: z.coerce.number().int().min(1).max(69).default(20),
 });
 
+/// One customer sentence for a bad request. Field names stay, parser language does not.
+function invalid(c: Context, error: z.ZodError) {
+  const fields = error.issues
+    .map((issue) => issue.path.filter((part) => typeof part === "string").join("."))
+    .filter(Boolean);
+  return c.json({ error: customerValidationError(fields) }, 400);
+}
+
 function serialize(result: ValuationResult) {
   return {
     pool: result.pool,
@@ -337,15 +361,23 @@ export function createApp(deps: AppDeps): Hono {
 
   // The vault registry is read from the chain the program is deployed on, so the list is live even
   // with no indexer running; an indexer's store, when present, is merged on top.
-  app.get("/v1/vaults", async (c) => c.json({ vaults: await mergedVaults(deps) }));
+  app.get("/v1/vaults", async (c) => c.json(await mergedVaults(deps)));
 
   app.get("/v1/vaults/:id", async (c) => {
     const id = c.req.param("id");
     const indexed = await deps.store.getVault(id);
     if (indexed) return c.json({ vault: indexed });
     const chain = await chainVaults(deps);
-    const found = chain?.find((vault) => vault.address === id);
-    if (!found) return c.json({ error: "vault not found" }, 404);
+    const found = chain?.vaults.find((vault) => vault.address === id);
+    if (!found) {
+      if (chain && !chain.live) {
+        return c.json(
+          { error: "We couldn't load this vault right now. Try again in a moment." },
+          503,
+        );
+      }
+      return c.json({ error: "We couldn't find that vault. Check the address." }, 404);
+    }
     return c.json({ vault: found });
   });
 
@@ -353,9 +385,9 @@ export function createApp(deps: AppDeps): Hono {
   // events inside their logs — so the page shows a real history with no indexer running.
   app.get("/v1/vaults/:id/events", async (c) => {
     const parsed = limitQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-    const events = await vaultEvents(deps, c.req.param("id"));
-    return c.json({ events: events.slice(0, parsed.data.limit) });
+    if (!parsed.success) return invalid(c, parsed.error);
+    const result = await vaultEvents(deps, c.req.param("id"));
+    return c.json({ events: result.events.slice(0, parsed.data.limit), live: result.live });
   });
 
   // Read from the DAMM v2 program rather than Meteora's data API. The data API does expose wallet
@@ -363,13 +395,21 @@ export function createApp(deps: AppDeps): Hono {
   // on devnet by default — and the chain is the authority on which positions exist regardless.
   app.get("/v1/positions/:wallet", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     try {
       const adapter = new DammV2Adapter(connection);
       const positions = await adapter.walletPositions(new PublicKey(c.req.param("wallet")));
       return c.json({ positions });
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "lookup failed" }, 400);
+      console.error("[positions]", error);
+      return c.json(
+        { error: "We couldn't read this wallet's positions. Try again in a moment." },
+        502,
+      );
     }
   });
 
@@ -378,7 +418,11 @@ export function createApp(deps: AppDeps): Hono {
   // be securitized as-is.
   app.get("/v1/positions/:wallet/onchain", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     try {
       const adapter = new DammV2Adapter(connection);
       const positions = await adapter.walletPositionDetails(new PublicKey(c.req.param("wallet")));
@@ -393,17 +437,25 @@ export function createApp(deps: AppDeps): Hono {
         })),
       });
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "lookup failed" }, 400);
+      console.error("[positions]", error);
+      return c.json(
+        { error: "We couldn't read this wallet's positions. Try again in a moment." },
+        502,
+      );
     }
   });
 
   app.get("/v1/valuation/:position", async (c) => {
     const parsed = valuationQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
 
     const position = c.req.param("position");
     const pool = parsed.data.pool ?? (await deps.store.getPositionPool(position));
-    if (!pool) return c.json({ error: "unknown pool; pass ?pool=" }, 400);
+    if (!pool)
+      return c.json(
+        { error: "We couldn't find the pool for this position. Open it from its vault page." },
+        400,
+      );
 
     try {
       const result = await pricePool(deps, pool, parsed.data);
@@ -416,14 +468,14 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get("/v1/dbc/preset", (c) => {
     const parsed = presetQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     const preset = buildFinanceablePreset(parsed.data);
     return c.json({ preset, validation: validatePreset(preset) });
   });
 
   app.get("/v1/pools/:pool/series", async (c) => {
     const parsed = valuationQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       const series = await deps.dataApi.poolDaily(c.req.param("pool"), parsed.data.days);
       return c.json({ series });
@@ -434,7 +486,7 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get("/v1/pools/:pool/yield", async (c) => {
     const parsed = valuationQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       const result = await pricePool(deps, c.req.param("pool"), parsed.data);
       return c.json({ valuation: serialize(result) });
@@ -459,18 +511,21 @@ export function createApp(deps: AppDeps): Hono {
       return c.json(
         {
           error:
-            "the shared devnet faucet is not configured on this deployment. Copy your address and use faucet.solana.com.",
+            "The test faucet isn't available right now. Copy your address and use faucet.solana.com.",
         },
         503,
       );
     }
     const parsed = z.object({ wallet: pubkey }).safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json(await deps.faucet.drip(parsed.data.wallet));
     } catch (error) {
+      console.error("[faucet]", error);
       return c.json(
-        { error: error instanceof Error ? error.message : "the faucet could not send SOL" },
+        {
+          error: "The test faucet is unavailable right now. Use faucet.solana.com to get test SOL.",
+        },
         502,
       );
     }
@@ -484,24 +539,38 @@ export function createApp(deps: AppDeps): Hono {
     try {
       key = new PublicKey(c.req.param("address"));
     } catch {
-      return c.json({ error: "that is not a Solana address" }, 400);
+      return c.json(
+        { error: "That doesn't look like a Solana address. Check it and try again." },
+        400,
+      );
     }
 
     const found: Array<{ cluster: ClusterName; owner: string; kind: string }> = [];
-    /// Mainnet first. An address can exist on both clusters — wrapped SOL does — and when it does, the
-    /// mainnet one is the meaningful answer: a devnet copy is usually a fixture of the same token.
+    let unreachable = false;
+    /// Mainnet first. An address can exist on both clusters: wrapped SOL does. When it does, the
+    /// mainnet one is the meaningful answer.
     const order = (["mainnet-beta", "devnet"] as ClusterName[]).filter(
       (name) => clusterMap(deps)[name],
     );
     for (const cluster of order) {
       const connection = clusterMap(deps)[cluster];
       if (!connection) continue;
-      const info = await connection.getAccountInfo(key).catch(() => null);
+      const info = await connection.getAccountInfo(key).catch((error: unknown) => {
+        console.error("[where]", cluster, error);
+        unreachable = true;
+        return null;
+      });
       if (!info) continue;
       const owner = info.owner.toBase58();
       found.push({ cluster, owner, kind: kindOf(owner, info.data.length) });
     }
 
+    if (found.length === 0 && unreachable) {
+      return c.json(
+        { error: "We couldn't check that address right now. Try again in a moment." },
+        502,
+      );
+    }
     if (found.length === 0) {
       return c.json({ address: key.toBase58(), cluster: null, kind: "unknown", found: [] });
     }
@@ -520,19 +589,26 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get("/v1/sale/plan", (c) => {
     const parsed = saleQuery.safeParse(c.req.query());
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     const { fairValuePerShareUsd, totalShares, ...rest } = parsed.data;
     try {
       const plan = buildLadder({ fairValuePerShareUsd, totalShares, ...rest });
       return c.json({ plan });
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "invalid ladder" }, 400);
+      return c.json(
+        { error: "That sale setup isn't valid. Check the price and share range." },
+        400,
+      );
     }
   });
 
   app.get("/v1/sale/presets", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     try {
       return c.json({
         presets: await listDlmmPresets(connection, clusterFor(deps, c.req.query("cluster"))),
@@ -555,9 +631,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/open-sale", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = openSaleBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json(
         await buildOpenSale(connection, parsed.data, clusterFor(deps, c.req.query("cluster"))),
@@ -586,9 +666,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/seed-ladder", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = seedLadderBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json(await buildSeedLadder(connection, parsed.data));
     } catch (error) {
@@ -614,7 +698,11 @@ export function createApp(deps: AppDeps): Hono {
   /// mainnet route: there, the fees a share stands for must come from other people's trading.
   app.post("/v1/tx/warm-pool", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     if (clusterFor(deps, c.req.query("cluster")) !== "devnet") {
       return c.json(
         {
@@ -625,7 +713,7 @@ export function createApp(deps: AppDeps): Hono {
       );
     }
     const parsed = warmPoolBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json(await buildWarmPool(connection, parsed.data));
     } catch (error) {
@@ -636,9 +724,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/create-mint", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = createMintBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({ transaction: await buildCreateMint(connection, parsed.data) });
     } catch (error) {
@@ -667,9 +759,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/launch", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = launchBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json(await buildLaunch(connection, parsed.data));
     } catch (error) {
@@ -680,9 +776,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/create-locked-position", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = lockedPositionBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json(await buildLockedPosition(connection, parsed.data));
     } catch (error) {
@@ -693,9 +793,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/create-vault", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = createVaultBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({ transaction: await buildCreateVault(connection, parsed.data) });
     } catch (error) {
@@ -706,9 +810,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/crank-claim", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = ownerVaultBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({
         transaction: await buildCrankClaim(connection, {
@@ -724,9 +832,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/stake", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({ transaction: await buildStake(connection, parsed.data) });
     } catch (error) {
@@ -737,9 +849,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/unstake", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({ transaction: await buildUnstake(connection, parsed.data) });
     } catch (error) {
@@ -750,9 +866,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/unstake-no-claim", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = stakeBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({ transaction: await buildUnstakeNoClaim(connection, parsed.data) });
     } catch (error) {
@@ -763,9 +883,13 @@ export function createApp(deps: AppDeps): Hono {
 
   app.post("/v1/tx/harvest", async (c) => {
     const connection = connectionFor(deps, c.req.query("cluster"));
-    if (!connection) return c.json({ error: "rpc connection is not configured" }, 503);
+    if (!connection)
+      return c.json(
+        { error: "This feature is unavailable right now. Try again in a moment." },
+        503,
+      );
     const parsed = ownerVaultBody.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+    if (!parsed.success) return invalid(c, parsed.error);
     try {
       return c.json({
         transaction: await buildHarvest(connection, {
@@ -781,7 +905,7 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get("/v1/stats", async (c) => {
     const [stored, chain] = await Promise.all([deps.store.stats(), chainVaults(deps)]);
-    const live = chain?.length ?? 0;
+    const live = chain?.vaults.length ?? 0;
     // Counts come from the chain when no indexer has already totalled them.
     return c.json({
       stats: {
@@ -789,6 +913,7 @@ export function createApp(deps: AppDeps): Hono {
         vaults: Math.max(stored.vaults, live),
         positionsSecuritized: Math.max(stored.positionsSecuritized, live),
       },
+      live: chain?.live ?? false,
     });
   });
 
@@ -812,6 +937,18 @@ export function createApp(deps: AppDeps): Hono {
     }),
   );
 
+  app.notFound((c) => c.json({ error: "That API route does not exist." }, 404));
+  app.onError((error, c) => {
+    console.error("[api]", error);
+    return c.json(
+      {
+        error:
+          "Perpetua hit a server error while preparing this request. Nothing was sent. Try again in a moment.",
+      },
+      500,
+    );
+  });
+
   return app;
 }
 
@@ -820,13 +957,13 @@ export function createApp(deps: AppDeps): Hono {
 /// and the short ones the launch page links with.
 function tokenMetadataDocument(c: Context): Response {
   const parsed = metadataQuery.safeParse(c.req.query());
-  if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+  if (!parsed.success) return invalid(c, parsed.error);
 
   const name = parsed.data.name ?? parsed.data.n;
   const symbol = parsed.data.symbol ?? parsed.data.s;
   const description = parsed.data.description ?? parsed.data.d;
   if (!name || !symbol || !description) {
-    return c.json({ error: "metadata needs a name, a symbol and a description" }, 400);
+    return c.json({ error: "Add a token name, ticker, and description." }, 400);
   }
 
   const external = parsed.data.external ?? parsed.data.e;
@@ -847,55 +984,62 @@ function tokenMetadataDocument(c: Context): Response {
   );
 }
 
-/// The data API is the only source of fee history. When it is unreachable, or has nothing for the
-/// pool, say so — a stand-in series is indistinguishable from a real one once it reaches a chart.
+/// The data API is the only source of fee history. Log the transport detail and return a sentence.
 function dataApiError(error: unknown): string {
-  return error instanceof Error ? error.message : "data api request failed";
+  console.error("[data api]", error);
+  return "Meteora's fee data service isn't responding. We can't price this pool right now. Try again in a moment.";
 }
 
-/// A pool the data API knows about, but which has not completed a single day yet. There is no fee
-/// stream to price, and answering "0" would read as "worthless" rather than "not yet".
+/// A pool the data API knows about, but which has not completed a single day yet.
 class NoHistoryError extends Error {}
 
 /// 404 for an address the data API has never heard of, 422 for a pool we cannot price yet, and 502
-/// for an upstream that let us down. They are different things and the caller should be able to tell
-/// them apart: only the first two mean "look at the address".
+/// for an upstream that let us down.
 function priceError(error: unknown): { status: 404 | 422 | 502; body: { error: string } } {
   if (error instanceof NoHistoryError) return { status: 422, body: { error: error.message } };
-  const message = dataApiError(error);
-  /// A 400 from the data service means the address never even reached a query — it is not a public
-  /// key at all. That is the caller's mistake rather than an upstream outage, and reporting it as a
-  /// 502 leaves whoever typed it nothing to act on.
-  if (/failed with 400/.test(message)) {
-    return { status: 404, body: { error: "that is not a Solana pool address" } };
+  const raw = error instanceof Error ? error.message : "";
+  console.error("[pricing]", error);
+  if (/failed with 400/.test(raw)) {
+    return {
+      status: 404,
+      body: { error: "That doesn't look like a Meteora pool address. Check it and try again." },
+    };
   }
-  if (/failed with 404/.test(message)) {
+  if (/failed with 404/.test(raw)) {
     return {
       status: 404,
       body: {
-        /// A devnet pool is the common case here, and it is *not* a bad address: Meteora's data
-        /// service covers mainnet only. Saying which of the two it is stops a devnet vault's pool
-        /// from reading as a typo.
         error:
-          "Meteora's data service has no fee history for that address, so the pool cannot be priced. It is either not a Meteora pool, or it is a devnet pool — the data service covers mainnet only.",
+          "Meteora's fee data service has no history for that pool. It may be a test-network pool. Pricing covers mainnet pools.",
       },
     };
   }
-  return { status: 502, body: { error: message } };
+  return {
+    status: 502,
+    body: {
+      error:
+        "Meteora's fee data service isn't responding. We can't price this pool right now. Try again in a moment.",
+    },
+  };
 }
 
-/// The transaction builders read the chain — a blockhash, the config account, the vault account — so
-/// they fail for three very different reasons: the request asks for something that cannot work (a
-/// stake that does not exist, a transaction too large for the network), the request names something
-/// that is not there, or the RPC itself is unhappy. Each gets its own status and its own sentence,
-/// because the pages word their errors per cause.
+/// The transaction builders read the chain: a blockhash, the config account, the vault account.
+/// Builder errors are already customer sentences. Everything else becomes an outage sentence, with
+/// the raw error logged server-side.
 function chainError(error: unknown): { status: 400 | 502; message: string } {
   if (error instanceof BuilderError) return { status: error.status, message: error.message };
-  const message = error instanceof Error ? error.message : "could not build the transaction";
-  const missing = /does not exist|no data|could not find|not found|invalid public key/i.test(
-    message,
-  );
-  return { status: missing ? 400 : 502, message };
+  console.error("[transaction builder]", error);
+  const raw = error instanceof Error ? error.message : "";
+  const missing = /does not exist|no data|could not find|not found|invalid public key/i.test(raw);
+  return missing
+    ? {
+        status: 400,
+        message: "We couldn't find that vault or position. Check the address and try again.",
+      }
+    : {
+        status: 502,
+        message: "We couldn't prepare this transaction. Nothing was sent. Try again in a moment.",
+      };
 }
 
 async function pricePool(
@@ -905,7 +1049,9 @@ async function pricePool(
 ): Promise<ValuationResult> {
   const series = await deps.dataApi.poolDaily(pool, query.days);
   if (series.days.length === 0) {
-    throw new NoHistoryError(`${pool} has no complete day of fee history yet`);
+    throw new NoHistoryError(
+      "This pool has not completed a full day of trading yet. Try again tomorrow.",
+    );
   }
   const risk = (await deps.store.getPoolRisk(pool)) ?? DEFAULT_RISK;
   const input: ValuationInput = {

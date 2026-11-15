@@ -51,6 +51,12 @@ const FEE_PER_SHARE_PRECISION = 10n ** 18n;
 /// build that overflows this is the *request's* fault and has to say which field is too long, rather
 /// than reaching the wallet and coming back as a shrug.
 const MAX_LEGACY_TX_BYTES = 1232;
+const SHARE_BASE_UNITS = 1_000_000n;
+
+/// The API speaks base units. People read whole shares.
+function wholeShares(value: bigint): string {
+  return (value / SHARE_BASE_UNITS).toLocaleString("en-US");
+}
 
 /// A build failure the caller can fix (400), as opposed to an upstream fault like a dead RPC (502).
 /// The pages word their errors per cause, so the two must not be collapsed into one status.
@@ -75,14 +81,14 @@ function encode(transaction: Transaction): string {
   } catch (error) {
     if (error instanceof Error && /too large|exceed/i.test(error.message)) {
       throw new BuilderError(
-        `the transaction is over the ${MAX_LEGACY_TX_BYTES}-byte limit a Solana transaction may occupy (${error.message}). Shorten the longest field — on a launch that is the metadata link — and try again.`,
+        "The token details are too long. Shorten the description or image link and try again.",
       );
     }
     throw error;
   }
   if (wire.length > MAX_LEGACY_TX_BYTES) {
     throw new BuilderError(
-      `this transaction is ${wire.length} bytes and a Solana transaction can carry at most ${MAX_LEGACY_TX_BYTES}; shorten the longest field (on a launch that is the metadata link) and try again`,
+      "This transaction is too large for the network. Shorten the token details and try again.",
     );
   }
   return wire.toString("base64");
@@ -302,11 +308,11 @@ export async function buildStake(connection: Connection, params: StakeParams): P
   const stake = refs.stakeAddress;
   const amount = BigInt(params.amount);
 
-  if (amount <= 0n) throw new BuilderError("stake a positive number of shares");
+  if (amount <= 0n) throw new BuilderError("Enter a positive number of shares.");
   const held = await shareBalance(connection, refs.account.shareMint, owner);
   if (held !== null && amount > held) {
     throw new BuilderError(
-      `this wallet holds ${held.toString()} of these shares, so it cannot stake ${amount.toString()} — buy or create shares first`,
+      `This wallet holds ${wholeShares(held)} shares. Enter ${wholeShares(held)} or fewer.`,
     );
   }
 
@@ -345,7 +351,7 @@ export async function buildStake(connection: Connection, params: StakeParams): P
 export async function buildUnstake(connection: Connection, params: StakeParams): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  const stakeAccount = requireStake(refs, "unstake");
+  const stakeAccount = requireStake(refs);
   const amount = requireStakeAmount(refs, stakeAccount, params.amount);
 
   const instruction = await refs.client.unstake(
@@ -387,7 +393,7 @@ export async function buildUnstakeNoClaim(
 ): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  const stakeAccount = requireStake(refs, "release shares from");
+  const stakeAccount = requireStake(refs);
   const amount = requireStakeAmount(refs, stakeAccount, params.amount);
 
   const instruction = await refs.client.unstakeNoClaim(
@@ -416,11 +422,9 @@ export async function buildUnstakeNoClaim(
 
 /// The caller's stake, or a sentence explaining that there is none. Without this the program answers
 /// with `AccountNotInitialized` (3012) on the `stake` account, which reads as a broken app.
-function requireStake(refs: VaultRefs, action: string): StakeAccountData {
+function requireStake(refs: VaultRefs): StakeAccountData {
   if (!refs.stake) {
-    throw new BuilderError(
-      `this wallet has no shares staked in that vault, so there is nothing to ${action} — stake shares first`,
-    );
+    throw new BuilderError("This wallet has no shares staked in that vault. Stake shares first.");
   }
   return refs.stake;
 }
@@ -429,10 +433,10 @@ function requireStake(refs: VaultRefs, action: string): StakeAccountData {
 function requireStakeAmount(refs: VaultRefs, stake: StakeAccountData, amount: string): bigint {
   const value = BigInt(amount);
   const staked = BigInt(stake.amount.toString());
-  if (value <= 0n) throw new BuilderError("give a positive number of shares");
+  if (value <= 0n) throw new BuilderError("Enter a positive number of shares.");
   if (value > staked) {
     throw new BuilderError(
-      `this wallet has ${staked.toString()} shares staked in that vault (${refs.stakeAddress.toBase58()}), less than ${value.toString()}`,
+      `This wallet has ${wholeShares(staked)} shares staked in that vault. Enter ${wholeShares(staked)} or fewer.`,
     );
   }
   return value;
@@ -444,13 +448,13 @@ export async function buildHarvest(
 ): Promise<string> {
   const owner = new PublicKey(params.owner);
   const refs = await resolveVault(connection, owner, params.vault);
-  requireStake(refs, "harvest");
+  requireStake(refs);
 
   // `harvest` settles first and then refuses when nothing is owed (`NothingToHarvest`, 6005). Saying
   // so here — with the reason fees have not accrued — beats a program error the wallet cannot explain.
   if (pendingNow(refs) === 0n) {
     throw new BuilderError(
-      "no fees are ready to harvest: this position has not earned anything since the last claim, so run Crank claim once the pool has swap volume, then harvest",
+      "No fees are ready to collect. First collect the pool's fees, then collect yours.",
     );
   }
 
@@ -627,7 +631,7 @@ export async function buildLaunch(
 ): Promise<LaunchResponse> {
   if (await connection.getAccountInfo(new PublicKey(params.baseMint))) {
     throw new BuilderError(
-      "that base mint already exists on chain. A DBC launch creates the token itself, so pass the address of a fresh keypair — the same keypair signs the launch",
+      "That token address already exists. A launch creates the token, so use a fresh address.",
     );
   }
   const adapter = new DbcAdapter({ connection });

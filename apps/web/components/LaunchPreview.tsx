@@ -27,9 +27,9 @@ export function LaunchPreview({
   return (
     <aside className={`${CARD} space-y-5 p-4 sm:p-5 lg:sticky lg:top-20`}>
       <div>
-        <p className="text-[12px] font-medium text-ink">What this creates</p>
+        <p className="text-[12px] font-medium text-ink">What you are launching</p>
         <p className="mt-1 text-[12px] leading-5 text-muted">
-          A token, its bonding curve, and the pool that holds the split you chose.
+          A token, its details, and its starting pool with the split you chose.
         </p>
       </div>
 
@@ -53,7 +53,7 @@ export function LaunchPreview({
 
       <div>
         <div className="flex items-baseline justify-between gap-3">
-          <p className="text-[12px] font-medium text-ink">Fee income · first year</p>
+          <p className="text-[12px] font-medium text-ink">Fees · first year</p>
           <span className="tnum text-[12px] text-ink">{money(perDay * 365)}</span>
         </div>
         <LineChart
@@ -66,7 +66,7 @@ export function LaunchPreview({
           <span>day 365</span>
         </div>
         <p className={`${META} mt-1`}>
-          Assumes the volume a day holds. {money(perDay)} a day at your assumptions.
+          Assumes this daily volume. {money(perDay)} a day at your inputs.
         </p>
       </div>
 
@@ -113,8 +113,7 @@ export function LaunchPreview({
       </dl>
 
       <p className={META}>
-        The locked slice is the one that can be turned into shares later — everything else stays
-        withdrawable by its owner.
+        The locked part can become shares later. The rest stays withdrawable by its owner.
       </p>
     </aside>
   );

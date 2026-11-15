@@ -13,9 +13,9 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
           padding: "3rem",
         }}
       >
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Perpetua failed to start</h1>
+        <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Perpetua could not load</h1>
         <p style={{ color: "#6b7280", marginTop: "0.5rem" }}>
-          The page could not load. Reload to try again.
+          Reload the page. If it keeps happening, come back in a few minutes.
         </p>
         <button
           type="button"

@@ -41,8 +41,8 @@ async function post<T>(path: string, body: unknown, cluster?: string): Promise<T
       payload && typeof payload === "object" && "error" in payload
         ? typeof payload.error === "string"
           ? payload.error
-          : JSON.stringify(payload.error)
-        : `request failed: ${response.status}`;
+          : "We couldn't prepare this transaction. Nothing was sent. Try again."
+        : "We couldn't prepare this transaction. Nothing was sent. Try again.";
     throw new Error(detail);
   }
   return payload as T;
@@ -69,10 +69,7 @@ async function preflight(transaction: Transaction, cluster?: string): Promise<vo
     const connection = new Connection(rpcUrl(cluster), "confirmed");
     const simulation = await connection.simulateTransaction(transaction);
     if (simulation.value.err) {
-      const logs = (simulation.value.logs ?? []).filter(Boolean).slice(-3).join(" · ");
-      throw new Error(
-        `${CLUSTER_REFUSED} (${JSON.stringify(simulation.value.err)})${logs ? `: ${logs}` : ""}`,
-      );
+      throw new Error(`${CLUSTER_REFUSED}: nothing was sent.`);
     }
   } catch (cause) {
     if (cause instanceof Error && cause.message.startsWith(CLUSTER_REFUSED)) throw cause;
@@ -120,17 +117,18 @@ async function broadcast(
 }
 
 function refusal(cause: unknown, cluster?: string): unknown {
-  const text = cause instanceof Error ? cause.message : String(cause ?? "no reason given");
-  if (/reject|denied|cancel|declin|refus/i.test(text)) return cause;
-  /// An expiring stamp is not the wallet's fault, and pointing at network settings cannot help: it
-  /// just needs another click, and the page builds a fresh transaction each time.
+  const text = cause instanceof Error ? cause.message : String(cause ?? "");
+  if (text.startsWith(CLUSTER_REFUSED)) {
+    return new Error("This transaction would fail before you sign. Nothing was sent. Try again.");
+  }
+  if (/reject|denied|cancel|declin|refus/i.test(text)) {
+    return new Error("You declined the request. Nothing was sent.");
+  }
   if (expired(text)) {
-    return new Error(
-      `that request expired before it was signed (${text}). Nothing was sent — try once more and it will build a fresh one.`,
-    );
+    return new Error("The request expired before you signed. Nothing was sent. Try again.");
   }
   return new Error(
-    `your wallet would not sign this ${cluster ?? "devnet"} transaction (${text}). It is valid on that network — the cluster accepted a simulation of it — so the usual cause is the wallet being switched to another network. In Phantom: Settings → Developer Settings → Change Network → Devnet, then reload this page.`,
+    `Your wallet would not sign this ${cluster ?? "devnet"} transaction. Check that it is on the right network, then try again.`,
   );
 }
 

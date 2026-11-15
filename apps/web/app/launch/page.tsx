@@ -8,7 +8,7 @@ import { ValueSlider } from "@/components/ValueSlider";
 import { api } from "@/lib/api";
 import { useNetwork } from "@/lib/cluster";
 import { money } from "@/lib/format";
-import { BUTTON_PRIMARY, CARD, EYEBROW, META, PAGE } from "@/lib/ui";
+import { BUTTON, BUTTON_PRIMARY, CARD, EYEBROW, META, PAGE } from "@/lib/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -92,15 +92,15 @@ export default function LaunchPage() {
   return (
     <div className={PAGE}>
       <PageHeader
-        title={mode === "plan" ? "Plan a launch" : "Deploy a launch"}
+        title={mode === "plan" ? "Plan a token" : "Launch a token"}
         description={
           mode === "plan"
-            ? "Split the pool's liquidity, watch what your cut of the fees would be, then deploy it."
-            : "Create the token and its pool with the split you planned — one signature, one transaction."
+            ? "Choose how the pool is split, see what your fees could be, then launch it."
+            : "Create the token and its pool with the split you planned."
         }
         actions={
           <span className={META}>
-            Deploying on{" "}
+            Network{" "}
             <span className="text-ink">{network === "mainnet-beta" ? "main" : network}</span>
           </span>
         }
@@ -113,14 +113,14 @@ export default function LaunchPage() {
           {
             id: "plan" as const,
             step: "Step 1",
-            title: "Plan a launch",
-            body: "Split the liquidity and see what your cut of the fees would be, at your own assumptions.",
+            title: "Plan a token",
+            body: "Choose the pool split and see what your fees could be.",
           },
           {
             id: "deploy" as const,
             step: "Step 2",
-            title: "Deploy a launch",
-            body: "Create the token, its metadata and its bonding-curve pool with the split you chose.",
+            title: "Launch a token",
+            body: "Create the token, its details, and its starting pool with the split you chose.",
           },
         ].map((card) => {
           const active = mode === card.id;
@@ -155,7 +155,7 @@ export default function LaunchPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <section className={`${CARD} space-y-5 p-4 sm:p-5`}>
               <div className="flex items-baseline justify-between gap-3">
-                <h2 className="text-[13px] font-semibold text-ink">The split</h2>
+                <h2 className="text-[13px] font-semibold text-ink">Pool split</h2>
                 <button
                   type="button"
                   onClick={balance}
@@ -189,7 +189,7 @@ export default function LaunchPage() {
 
               <div className="space-y-4">
                 <ValueSlider
-                  label="Your liquidity"
+                  label="Your share"
                   value={form.creatorLiquidityPct}
                   min={0}
                   max={100}
@@ -199,7 +199,7 @@ export default function LaunchPage() {
                   maxLabel="100%"
                 />
                 <ValueSlider
-                  label="Partner's liquidity"
+                  label="Partner share"
                   value={form.partnerLiquidityPct}
                   min={0}
                   max={100}
@@ -231,16 +231,14 @@ export default function LaunchPage() {
               </div>
 
               <output className={`${META} block ${addsUp ? "" : "text-warn"}`}>
-                {addsUp ? "Adds up to 100%." : `Adds up to ${allocated}% — needs to be 100%.`}
+                {addsUp ? "Adds up to 100%." : `Adds up to ${allocated}%. It needs to be 100%.`}
               </output>
             </section>
 
             <section className={`${CARD} space-y-5 p-4 sm:p-5`}>
               <div className="flex items-baseline justify-between gap-3">
-                <h2 className="text-[13px] font-semibold text-ink">
-                  Your cut, at your assumptions
-                </h2>
-                <span className={META}>not a forecast</span>
+                <h2 className="text-[13px] font-semibold text-ink">Your fee cut</h2>
+                <span className={META}>Estimate</span>
               </div>
 
               <div className="space-y-4">
@@ -269,7 +267,7 @@ export default function LaunchPage() {
               </div>
 
               <div className="space-y-3">
-                <p className={META}>You would keep</p>
+                <p className={META}>You would earn</p>
                 <ul className="space-y-2.5">
                   {horizons.map((row) => (
                     <li key={row.days}>
@@ -295,22 +293,26 @@ export default function LaunchPage() {
               </div>
 
               <div className="space-y-2 border-t border-line pt-4">
-                <p className="text-[12px] font-medium text-ink">Does the plan work?</p>
+                <p className="text-[12px] font-medium text-ink">Can this launch work?</p>
                 {preset.isPending ? <p className={META}>Checking…</p> : null}
                 {preset.isError ? (
-                  <p className="text-[12px] leading-5 text-warn">
-                    Couldn&apos;t check this plan — the API isn&apos;t answering. Nothing you typed
-                    is lost; try again in a moment.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-[12px] leading-5 text-warn">
+                      We couldn&apos;t check this plan. Your inputs are safe. Try again in a moment.
+                    </p>
+                    <button type="button" onClick={() => void preset.refetch()} className={BUTTON}>
+                      Try again
+                    </button>
+                  </div>
                 ) : null}
                 {preset.data && valid && addsUp ? (
                   <p className="text-[12px] leading-5 text-ink">
-                    Yes — the locked share is big enough to become tradable shares later.
+                    Yes. The locked share is large enough to become shares later.
                   </p>
                 ) : null}
                 {preset.data && (!valid || !addsUp) ? (
                   <ul className="space-y-1 text-[12px] leading-5 text-warn">
-                    {!addsUp ? <li>The three liquidity shares have to add up to 100%.</li> : null}
+                    {!addsUp ? <li>The three pool shares have to add up to 100%.</li> : null}
                     {preset.data.validation.errors.map((error) => (
                       <li key={error}>{error}</li>
                     ))}
@@ -331,7 +333,7 @@ export default function LaunchPage() {
               disabled={!addsUp || !valid}
               className={BUTTON_PRIMARY}
             >
-              Deploy this plan
+              Launch this plan
             </button>
           </div>
         </>

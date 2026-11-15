@@ -15,7 +15,7 @@ export function Footer() {
       >
         <p className={`${META} max-w-xl`}>{SITE.description}</p>
         <p className={`${META} flex flex-wrap items-center gap-x-2 gap-y-1 sm:shrink-0`}>
-          <span>Vaults and share trades run on devnet. Pool pricing reads mainnet data.</span>
+          <span>Shares and trading run on the test network. Pricing reads mainnet data.</span>
           <Link href="/sandbox" className={LINK}>
             Sandbox
           </Link>

@@ -121,9 +121,14 @@ function query(params: object): string {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBase()}${path}`, {
-    headers: { accept: "application/json" },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase()}${path}`, {
+      headers: { accept: "application/json" },
+    });
+  } catch {
+    throw new ApiError(0, "We couldn't reach Perpetua. Check your connection and try again.");
+  }
   if (!response.ok) throw new ApiError(response.status, await errorSentence(response));
   return (await response.json()) as T;
 }
@@ -132,10 +137,13 @@ async function errorSentence(response: Response): Promise<string | undefined> {
   try {
     const body = (await response.json()) as { error?: unknown };
     if (typeof body?.error === "string" && body.error.trim()) return body.error;
+    if (Array.isArray(body?.error)) {
+      return "One of the values in this request isn't valid. Check it and try again.";
+    }
   } catch {
-    // A body that is not JSON says nothing extra; the status still does.
+    // A body that is not JSON says nothing extra.
   }
-  return undefined;
+  return "We couldn't complete that request. Try again in a moment.";
 }
 
 export class ApiError extends Error {
@@ -161,11 +169,16 @@ export function apiStatus(error: unknown): number | undefined {
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${apiBase()}${path}`, {
-    method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase()}${path}`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, "We couldn't reach Perpetua. Check your connection and try again.");
+  }
   if (!response.ok) throw new ApiError(response.status, await errorSentence(response));
   return (await response.json()) as T;
 }
@@ -187,10 +200,10 @@ export const api = {
     get<{ preset: unknown; validation: { valid: boolean; errors: string[] } }>(
       `/v1/dbc/preset${query(params)}`,
     ),
-  vaults: () => get<{ vaults: VaultSummary[] }>("/v1/vaults"),
+  vaults: () => get<{ vaults: VaultSummary[]; live?: boolean }>("/v1/vaults"),
   vault: (id: string) => get<{ vault: VaultSummary }>(`/v1/vaults/${id}`),
   events: (id: string, limit = 25) =>
-    get<{ events: VaultEvent[] }>(`/v1/vaults/${id}/events?limit=${limit}`),
+    get<{ events: VaultEvent[]; live?: boolean }>(`/v1/vaults/${id}/events?limit=${limit}`),
   valuation: (pool: string, params: ValuationParams = {}) =>
     get<{ valuation: ValuationView }>(`/v1/pools/${pool}/yield${query(params)}`),
   series: (pool: string, days = 30) =>
@@ -201,7 +214,7 @@ export const api = {
     get<{ presets: Array<{ address: string; binStep: number; baseFactor: string }> }>(
       `/v1/sale/presets${cluster ? `?cluster=${cluster}` : ""}`,
     ),
-  stats: () => get<{ stats: StatsSummary }>("/v1/stats"),
+  stats: () => get<{ stats: StatsSummary; live?: boolean }>("/v1/stats"),
   positions: (wallet: string, cluster?: ClusterName) =>
     get<{ positions: PositionSummary[] }>(
       `/v1/positions/${wallet}${cluster ? `?cluster=${cluster}` : ""}`,

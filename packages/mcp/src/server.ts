@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { customerError } from "@perpetua/shared";
 import type { PerpetuaApiPort } from "./ports.js";
 import { TOOLS, type ToolContext } from "./tools.js";
 
@@ -38,7 +39,7 @@ export function createServer(options: ServerOptions): McpServer {
           const payload = { ...outcome.envelope, data: outcome.data };
           return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = customerError(error, { action: "complete that request" });
           return { content: [{ type: "text" as const, text: `error: ${message}` }], isError: true };
         }
       },

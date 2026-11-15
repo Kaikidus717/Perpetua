@@ -82,5 +82,13 @@ export function txUrl(signature: string, cluster: Cluster = APP_CLUSTER): string
 }
 
 export function riskLabel(flag: string): string {
-  return flag.replace(/_/g, " ");
+  const labels: Record<string, string> = {
+    compounding_mode: "Fees are reinvested",
+    pausable_mint: "Token can be paused",
+    permanent_delegate: "Token has a permanent delegate",
+    pool_too_young: "Pool is new",
+    volume_concentration: "Volume is concentrated",
+    low_liquidity: "Low liquidity",
+  };
+  return labels[flag] ?? flag.replace(/_/g, " ");
 }

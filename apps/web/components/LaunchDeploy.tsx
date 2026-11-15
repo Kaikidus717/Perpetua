@@ -104,7 +104,7 @@ export function LaunchDeploy({
   function deploy() {
     if (!provider || !cluster || uriTooLong || !filled) return;
     const target = cluster;
-    void run("Deploy the launch", async () => {
+    void run("launch this token", async () => {
       const mintKeypair = Keypair.generate();
       const result = await deployLaunch(
         provider,
@@ -126,36 +126,30 @@ export function LaunchDeploy({
       );
       setMint(mintKeypair.publicKey.toBase58());
       setLaunch(result);
-      setMessage(
-        `Launched on ${networkLabel(target)}: the token, its metadata and the pool were created in one transaction.`,
-      );
+      setMessage(`The token and its pool are live on ${networkLabel(target)}.`);
     });
   }
 
   return (
     <section className={`${CARD} space-y-4 p-5`}>
       <h2 className="text-base font-semibold text-ink">
-        {cluster ? `Deploy this launch on ${networkLabel(cluster)}` : "Deploy this launch"}
+        {cluster ? `Launch this token on ${networkLabel(cluster)}` : "Launch this token"}
       </h2>
 
       {unresolved ? (
-        <p className="text-[12px] text-muted">
-          Reading which network your wallet is on. A launch is built for one network and can only be
-          signed by a wallet switched to it, so this waits for the answer rather than guessing.
-        </p>
+        <p className="text-[12px] text-muted">Checking which network your wallet is on.</p>
       ) : null}
 
       {mismatched ? (
-        <p className="text-[12px] text-warn">
-          Your wallet is on {networkLabel(network.cluster)}, and this launch is set to{" "}
-          {networkLabel(cluster)}. A wallet signs on whichever network it is switched to, so change
-          the wallet&apos;s network or the choice above before signing.
+        <p className="text-[12px] leading-5 text-warn">
+          Your wallet is on {networkLabel(network.cluster)}, but this launch is set to{" "}
+          {networkLabel(cluster)}. Switch the wallet to {networkLabel(cluster)}, or change the
+          network above.
         </p>
       ) : null}
-      <p className="text-[13px] text-muted">
-        Creates the token, then the DBC config and its pool, using exactly the split planned above.
-        Graduation to DAMM v2 happens on the curve&apos;s own schedule; the migrated position is
-        what Create shares securitizes.
+      <p className="text-[13px] leading-5 text-muted">
+        Creates the token, its details, and its starting pool with the split you chose. The position
+        can become shares after it graduates.
       </p>
 
       {!ready ? (
@@ -186,7 +180,7 @@ export function LaunchDeploy({
             className={INPUT}
           />
           <span className="block text-[12px] text-muted">
-            The short symbol, like SOL or USDC. We fill it in from the name — change it if you like.
+            The short symbol, like SOL or USDC. We fill it in from the name. Change it if you like.
           </span>
         </label>
         <label className="space-y-1 text-[13px]">
@@ -210,8 +204,7 @@ export function LaunchDeploy({
           className={INPUT}
         />
         <span className="block text-[12px] text-muted">
-          Wallets and explorers show this under the ticker. It travels inside the metadata link
-          below, so keep it short.
+          Wallets and explorers show this under the ticker. Keep it short.
         </span>
       </label>
 
@@ -223,16 +216,14 @@ export function LaunchDeploy({
           placeholder="https://…/logo.png"
           className={INPUT_MONO}
         />
-        <span className="block text-[12px] text-muted">
-          Leave this blank and the token is created with a default logo. Otherwise a direct link to
-          an image file — <span className="text-ink">.png, .jpg or .gif</span> — ending in the file
-          name, for example https://…/logo.png. Host it anywhere public: your own site, IPFS or
-          Arweave.
+        <span className="block text-[12px] leading-5 text-muted">
+          Leave this blank to use the default logo. Otherwise paste a direct link to a{" "}
+          <span className="text-ink">.png, .jpg or .gif</span> file. Host it anywhere public.
         </span>
       </label>
 
       <details className="text-[13px]">
-        <summary className="cursor-pointer text-muted">Use your own metadata link instead</summary>
+        <summary className="cursor-pointer text-muted">Use your own token details link</summary>
         <input
           value={customUri}
           onChange={(event) => setCustomUri(event.target.value)}
@@ -245,14 +236,14 @@ export function LaunchDeploy({
           length is the only thing a creator needs to care about. Folded away, with that count. */}
       <details className="text-[12px]">
         <summary className="w-fit cursor-pointer text-muted underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink">
-          Metadata link · {uri.length}/{URI_LIMIT} characters
+          Token details link · {uri.length}/{URI_LIMIT} characters
         </summary>
         <p className="mt-1 break-all font-mono text-[11px] text-muted">{uri}</p>
       </details>
       {uriTooLong ? (
-        <p className="text-[12px] text-warn">
-          That metadata link is {uri.length - URI_LIMIT} characters too long for the launch. Shorten
-          the description or the image link, or host the JSON yourself and paste that link above.
+        <p className="text-[12px] leading-5 text-warn">
+          The token details link is {uri.length - URI_LIMIT} characters too long. Shorten the
+          description or the image link.
         </p>
       ) : null}
 
@@ -265,23 +256,23 @@ export function LaunchDeploy({
           disabled={!ready || busy !== null || !filled || uriTooLong || unresolved || mismatched}
           className={BUTTON_PRIMARY}
         >
-          {busy === "Deploy the launch" ? "Waiting for signature…" : "Deploy the launch"}
+          {busy === "launch this token" ? "Waiting for signature…" : "Launch this token"}
         </button>
       </div>
 
-      <p className="text-[12px] text-muted">
-        One signature creates the token, its metadata and the bonding-curve pool together. Meteora
-        charges a pool-creation fee of about 1 SOL for that, which the fee claimer (you) can claim
-        back later, so this wallet needs a little over 1 SOL before the launch will go through.
+      <p className="text-[12px] leading-5 text-muted">
+        One approval creates the token, its details, and its starting pool. Meteora charges about 1
+        SOL to create the pool. You can claim it back later, so this wallet needs a little over 1
+        SOL.
       </p>
 
       {!filled && !launch ? (
-        <p className="text-[12px] text-muted">
-          Fill in a name, ticker and description to enable the deploy.
+        <p className="text-[12px] leading-5 text-muted">
+          Add a name, ticker, and description to continue.
         </p>
       ) : null}
 
-      {message ? <p className="break-all text-[13px] text-ink">{message}</p> : null}
+      {message ? <p className="text-[13px] leading-5 text-warn">{message}</p> : null}
 
       {mint || launch ? (
         <div className={`${CARD_MUTED} space-y-1 p-4 text-[13px]`}>

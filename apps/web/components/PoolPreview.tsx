@@ -27,10 +27,10 @@ export function PoolPreview({
   return (
     <div className={`${CARD} space-y-5 p-4`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <p className={EYEBROW}>Pool preview</p>
+        <p className={EYEBROW}>Market preview</p>
         <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[11px] text-muted">
           <span>
-            Bin step <span className="tnum text-ink">{binStep ?? "—"}</span>
+            Price step <span className="tnum text-ink">{binStep ?? "—"}</span>
           </span>
           <span>
             Pair{" "}
@@ -39,14 +39,14 @@ export function PoolPreview({
             </span>
           </span>
           <span>
-            Bins <span className="tnum text-ink">{bins.length}</span>
+            Price levels <span className="tnum text-ink">{bins.length}</span>
           </span>
         </div>
       </div>
 
       <div>
         <div className="flex items-baseline justify-between gap-3">
-          <p className="text-[12px] text-ink">Price curve</p>
+          <p className="text-[12px] text-ink">Price steps</p>
           <p className={`${META} tnum`}>
             {usd(low, 6)} → {usd(high, 6)}
           </p>
@@ -56,12 +56,12 @@ export function PoolPreview({
           className="h-20"
           label={`Ask price across ${bins.length} bins, from ${usd(low, 6)} to ${usd(high, 6)}`}
         />
-        <p className={META}>How the ask price steps up across the ladder.</p>
+        <p className={META}>How the price rises across the ladder.</p>
       </div>
 
       <div>
         <div className="flex items-baseline justify-between gap-3">
-          <p className="text-[12px] text-ink">Liquidity distribution</p>
+          <p className="text-[12px] text-ink">Shares at each price</p>
           <p className={`${META} tnum`}>{Math.round(most)} max / bin</p>
         </div>
         <div
@@ -78,7 +78,7 @@ export function PoolPreview({
             />
           ))}
         </div>
-        <p className={META}>Shares available at each price — the shape of the book.</p>
+        <p className={META}>How many shares sit at each price.</p>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-line">
@@ -94,8 +94,8 @@ export function PoolPreview({
           </thead>
           <tbody>
             {[
-              { token: shareLabel, role: "Offered — what buyers receive", price: high },
-              { token: quoteLabel, role: "Paid — what buyers spend", price: 1 },
+              { token: shareLabel, role: "Offered. What buyers receive.", price: high },
+              { token: quoteLabel, role: "Paid. What buyers spend.", price: 1 },
             ].map((row) => (
               <tr key={row.role}>
                 <td className="border-b border-line/60 px-3 py-1.5 font-mono text-ink">

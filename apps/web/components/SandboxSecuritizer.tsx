@@ -4,7 +4,7 @@ import { Spinner } from "@/components/Spinner";
 import { VaultActions } from "@/components/VaultActions";
 import { type OnchainPosition, api } from "@/lib/api";
 import { explorerUrl, shortAddress, txUrl } from "@/lib/format";
-import { humanError } from "@/lib/messages";
+import { humanError, loadError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
 import { RPC_URL, type SecuritizeResult, createLockedPosition, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, CHIP, CHIP_WARN, LINK, META } from "@/lib/ui";
@@ -60,7 +60,7 @@ function setupProblem(cause: unknown): string {
   if (/rejected|declined|cancel/i.test(detail)) {
     return "You declined a wallet prompt. Nothing was sent.";
   }
-  return humanError(cause, "Setting up the test vault");
+  return humanError(cause, "set up the test vault");
 }
 
 /// The sandbox's own securitizer: scan this wallet, show the eligibility verdict, create shares,
@@ -110,7 +110,7 @@ export function SandboxSecuritizer() {
       setResult({ ...created, position: position.address, vault: findVault(position.address) });
       void positions.refetch();
     } catch (cause) {
-      setMessage(humanError(cause, "Turning the position into shares"));
+      setMessage(humanError(cause, "turn this position into shares"));
     } finally {
       setBusy(null);
     }
@@ -207,23 +207,25 @@ export function SandboxSecuritizer() {
           {positions.isPending ? (
             <p className={`${META} flex items-center gap-2`}>
               <Spinner label="Scanning this wallet" />
-              Scanning this wallet for permanently locked positions…
+              Scanning this wallet for locked positions…
             </p>
           ) : null}
 
           {positions.isError ? (
-            <p className="text-[13px] leading-5 text-warn">
-              The scan failed:{" "}
-              {positions.error instanceof Error
-                ? positions.error.message
-                : "the API did not answer"}
-              . Try again in a moment.
-            </p>
+            <div className={`${CARD_MUTED} space-y-2 p-4`}>
+              <p className="text-[13px] text-ink">We couldn&apos;t scan this wallet.</p>
+              <p className={`${META} leading-5`}>
+                {loadError(positions.error, "this wallet's positions")}
+              </p>
+              <button type="button" onClick={() => void positions.refetch()} className={BUTTON}>
+                Try again
+              </button>
+            </div>
           ) : null}
 
           {positions.data && positions.data.positions.length === 0 ? (
             <div className={`${CARD_MUTED} space-y-3 p-4`}>
-              <p className="text-[13px] font-semibold text-ink">No position yet? Build one.</p>
+              <p className="text-[13px] font-semibold text-ink">No test pool yet? Build one.</p>
               <p className="text-[12px] leading-5 text-muted">
                 One click creates a fresh Meteora pool with money locked forever, then turns it into
                 a vault with 1,000,000 shares. You will approve three wallet prompts.
@@ -262,15 +264,21 @@ export function SandboxSecuritizer() {
                     <div className="grid gap-2 text-[12px] sm:grid-cols-3">
                       <div>
                         <div className="text-muted">Can be withdrawn</div>
-                        <div className="tnum text-ink">{position.unlockedLiquidity}</div>
+                        <div className="text-ink">
+                          {position.unlockedLiquidity === "0" ? "No" : "Yes"}
+                        </div>
                       </div>
                       <div>
                         <div className="text-muted">Unlocks over time</div>
-                        <div className="tnum text-ink">{position.vestedLiquidity}</div>
+                        <div className="text-ink">
+                          {position.vestedLiquidity === "0" ? "No" : "Yes"}
+                        </div>
                       </div>
                       <div>
                         <div className="text-muted">Locked forever</div>
-                        <div className="tnum text-ink">{position.permanentLockedLiquidity}</div>
+                        <div className="text-ink">
+                          {position.permanentLockedLiquidity === "0" ? "No" : "Yes"}
+                        </div>
                       </div>
                     </div>
 

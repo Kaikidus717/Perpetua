@@ -29,11 +29,11 @@ export function VaultTable({ vaults }: { vaults: VaultSummary[] }) {
   if (vaults.length === 0) {
     return (
       <div className={`${CARD_MUTED} p-4`}>
-        <p className="text-[13px] text-ink">No vaults yet.</p>
+        <p className="text-[13px] text-ink">No shares yet.</p>
         <p className={`${META} mt-1`}>
-          A vault appears the moment a locked position is securitized on devnet.{" "}
+          Turn a locked pool into shares to start one.{" "}
           <Link href="/securitize" className={LINK}>
-            Create the first one
+            Turn into shares
           </Link>
           .
         </p>
@@ -75,13 +75,13 @@ export function VaultTable({ vaults }: { vaults: VaultSummary[] }) {
                 </span>
               </div>
               <div>
-                <p className={META}>Fees A / B · base units</p>
+                <p className={META}>Fees collected, token A / token B</p>
                 <p className="tnum text-[13px] text-ink">
                   {vault.totalClaimedA} / {vault.totalClaimedB}
                 </p>
               </div>
               <Link href={`/vault/${vault.address}`} className={BUTTON}>
-                Open
+                View vault
               </Link>
             </div>
           </div>

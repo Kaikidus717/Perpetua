@@ -16,10 +16,10 @@ export function LadderHistogram({
   return (
     <div
       role="img"
-      aria-label={`Ask ladder: ${bins.length} price bins from ${usd(low, 6)} to ${usd(
+      aria-label={`Sale ladder: ${bins.length} price levels from ${usd(low, 6)} to ${usd(
         high,
         6,
-      )}, largest bin ${Math.round(most)} shares.`}
+      )}, largest level ${Math.round(most)} shares.`}
       className="flex h-24 items-end gap-[2px]"
     >
       {bins.map((bin) => (

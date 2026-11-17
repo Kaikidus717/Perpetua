@@ -7,7 +7,7 @@ export function PageHeader({
   description,
   actions,
 }: {
-  /// Optional context line, used for the one-time onboarding label.
+  /// Optional context line.
   eyebrow?: string;
   title: string;
   description?: string;

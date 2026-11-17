@@ -1,27 +1,14 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
-import { UnderstandButton } from "@/components/UnderstandButton";
 import { BUTTON, CARD, CHIP, LINK, META, PAGE } from "@/lib/ui";
-import { WALKTHROUGH_COOKIE, walkthroughSeen } from "@/lib/walkthrough";
-import { cookies } from "next/headers";
 import Link from "next/link";
 
-/// The first visit is the only time the page carries the Onboarding label and the Continue button.
-/// The footer link opens the same page as a plain explanation.
-export default async function WalkthroughPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ welcome?: string }>;
-}) {
-  const [params, store] = await Promise.all([searchParams, cookies()]);
-  const seen = walkthroughSeen(store.get(WALKTHROUGH_COOKIE)?.value);
-  const firstVisit = params.welcome === "1" && !seen;
-
+/// The tour is a normal page. It no longer stands between a visitor and the app.
+export default function WalkthroughPage() {
   return (
     <div className={PAGE}>
       <PageHeader
-        eyebrow={firstVisit ? "Onboarding" : undefined}
-        title={firstVisit ? "Welcome to Perpetua" : "How Perpetua works"}
+        title="How Perpetua works"
         description="Perpetua turns the fees from a locked Meteora pool into shares. You can buy them, hold them, or sell them. This page shows what you can do and what we check before you sign."
       />
 
@@ -167,28 +154,11 @@ export default async function WalkthroughPage({
         </p>
       </details>
 
-      {firstVisit ? (
-        <section className={`${CARD} flex flex-wrap items-center justify-between gap-4 p-4`}>
-          <div className="space-y-1">
-            <h2 className="text-[14px] font-semibold text-ink">Ready to try it?</h2>
-            <p className="text-[13px] text-muted">
-              Continue to the app. You can find this page again in the footer.
-            </p>
-          </div>
-          <UnderstandButton />
-        </section>
-      ) : (
-        <p className={`${META} flex flex-wrap items-center gap-2`}>
-          <span>You are all set.</span>
-          <Link href="/" className={LINK}>
-            Back to vaults
-          </Link>
-          <span aria-hidden="true">·</span>
-          <Link href="/sandbox" className={LINK}>
-            Try the sandbox
-          </Link>
-        </p>
-      )}
+      <p className={`${META} flex flex-wrap items-center gap-2`}>
+        <Link href="/" className={LINK}>
+          Back to vaults
+        </Link>
+      </p>
     </div>
   );
 }

@@ -1,14 +1,16 @@
+import { OnboardingPrompt } from "@/components/OnboardingPrompt";
 import { VaultsPage } from "@/components/VaultsPage";
 import { WALKTHROUGH_COOKIE, walkthroughSeen } from "@/lib/walkthrough";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 
-/// The landing page is gated once. `proxy.ts` catches most first visits before this renders; this
-/// check is the server-side backstop if a deployment does not run the proxy.
+/// The tour is available, not required. A first-time visitor sees one small prompt they can close.
 export default async function Page() {
   const store = await cookies();
-  if (!walkthroughSeen(store.get(WALKTHROUGH_COOKIE)?.value)) {
-    redirect("/walkthrough?welcome=1");
-  }
-  return <VaultsPage />;
+  const showTour = !walkthroughSeen(store.get(WALKTHROUGH_COOKIE)?.value);
+  return (
+    <>
+      <VaultsPage />
+      <OnboardingPrompt show={showTour} />
+    </>
+  );
 }

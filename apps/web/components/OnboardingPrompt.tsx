@@ -23,7 +23,7 @@ export function OnboardingPrompt({ show }: { show: boolean }) {
   return createPortal(
     <aside
       aria-label="Onboarding"
-      className="fixed bottom-20 right-4 z-40 w-[min(17rem,calc(100vw-2rem))] rounded-xl border border-line bg-panel p-3.5 md:bottom-6 md:right-6"
+      className="fixed bottom-20 right-4 z-40 w-[15rem] max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-panel p-3 md:bottom-6 md:right-6"
     >
       <button
         type="button"
@@ -32,7 +32,7 @@ export function OnboardingPrompt({ show }: { show: boolean }) {
           markSeen();
           setVisible(false);
         }}
-        className="absolute right-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-ink motion-reduce:transition-none"
+        className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md border border-line bg-canvas text-muted transition-colors duration-150 hover:border-muted hover:text-ink motion-reduce:transition-none"
       >
         <svg
           aria-hidden="true"
@@ -46,11 +46,11 @@ export function OnboardingPrompt({ show }: { show: boolean }) {
         </svg>
       </button>
 
-      <p className="pr-7 text-[13px] font-medium text-ink">First time here?</p>
+      <p className="pr-9 text-[13px] font-medium text-ink">First time here?</p>
       <Link
         href="/walkthrough"
         onClick={markSeen}
-        className="mt-2.5 inline-flex items-center rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-canvas transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
+        className="mt-2 flex w-full items-center justify-center rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-canvas transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
       >
         Take the tour
       </Link>

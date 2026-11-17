@@ -1,3 +1,4 @@
+import { ClosePageButton } from "@/components/ClosePageButton";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { BUTTON, CARD, CHIP, LINK, META, PAGE } from "@/lib/ui";
@@ -10,6 +11,7 @@ export default function WalkthroughPage() {
       <PageHeader
         title="How Perpetua works"
         description="Perpetua turns the fees from a locked Meteora pool into shares. You can buy them, hold them, or sell them. This page shows what you can do and what we check before you sign."
+        actions={<ClosePageButton />}
       />
 
       <p className={`${CARD} p-4 text-[13px] leading-6 text-muted`}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { NavigationMemory } from "@/components/NavigationMemory";
 import { NetworkProvider } from "@/lib/cluster";
 import { WalletProvider } from "@/lib/wallet";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -24,7 +25,10 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <NetworkProvider>
-        <WalletProvider>{children}</WalletProvider>
+        <WalletProvider>
+          <NavigationMemory />
+          {children}
+        </WalletProvider>
       </NetworkProvider>
     </QueryClientProvider>
   );

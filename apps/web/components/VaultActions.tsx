@@ -13,7 +13,7 @@ import {
   warmPool,
 } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, LINK } from "@/lib/ui";
-import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useState } from "react";
 
 const SHARE_DECIMALS = 6n;
@@ -73,9 +73,9 @@ export function VaultActions({ vault }: { vault: string }) {
     <section className={`${CARD} space-y-4 p-5`}>
       <h2 className="text-base font-semibold text-ink">Stake shares and collect fees</h2>
       {!ready ? (
-        <button type="button" onClick={() => void wallet.connect()} className={BUTTON}>
-          Connect a wallet ({SUPPORTED_WALLETS})
-        </button>
+        <p className="text-[12px] leading-5 text-muted">
+          Connect your wallet in the header to stake or collect fees.
+        </p>
       ) : null}
 
       {ready && wrongNetwork ? (

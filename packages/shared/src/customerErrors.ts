@@ -56,8 +56,8 @@ export function customerError(cause: unknown, options: CustomerErrorOptions): st
   if (/user rejected|rejected the request|declined|denied|reject/i.test(detail)) {
     return "You declined the request. Nothing was sent.";
   }
-  if (/connect a wallet/i.test(detail)) {
-    return "Connect a wallet to continue.";
+  if (/connect (a|your) wallet/i.test(detail)) {
+    return "Connect your wallet in the header to continue.";
   }
   if (/wallet cannot sign|can't sign/i.test(detail)) {
     return "This wallet can't sign transactions. Try a different wallet.";

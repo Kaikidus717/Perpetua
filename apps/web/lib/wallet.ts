@@ -1,7 +1,15 @@
 "use client";
 
 import type { Transaction } from "@solana/web3.js";
-import { useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 export interface SolanaProvider {
   connect(options?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: { toBase58(): string } }>;
@@ -35,8 +43,7 @@ function read<T>(value: () => T): T | undefined {
   }
 }
 
-/// A wallet's own message when it fails, with the proxy case replaced by something a person can act
-/// on. Everything else is passed through unchanged: "user rejected the request" is worth reading.
+/// A wallet's own message when it fails, reduced to the cases a person can act on.
 export function walletError(cause: unknown): string {
   const detail = cause instanceof Error ? cause.message : String(cause);
   if (/proxy/i.test(detail)) {
@@ -99,9 +106,19 @@ function wireEvents(detected: SolanaProvider, handler: () => void): () => void {
   };
 }
 
-export function useSolanaWallet() {
+export interface WalletState {
+  address: string | null;
+  error: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+}
+
+const WalletContext = createContext<WalletState | null>(null);
+
+/// One wallet state for the whole app. The header owns the only connect control; pages read the
+/// same address and update immediately when it changes.
+function useWalletState(): WalletState {
   const [address, setAddress] = useState<string | null>(null);
-  const [available, setAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -111,7 +128,6 @@ export function useSolanaWallet() {
     const detect = () => {
       if (!live) return;
       const detected = provider();
-      setAvailable(Boolean(detected));
       const current = providerAddress(detected);
       if (current) setAddress(current);
       if (detected && !unsubscribe) {
@@ -132,6 +148,7 @@ export function useSolanaWallet() {
   }, []);
 
   const connect = useCallback(async () => {
+    setError(null);
     const detected = provider();
     if (!detected) {
       setError(`No Solana wallet found. Install ${SUPPORTED_WALLETS}, then reload.`);
@@ -140,7 +157,6 @@ export function useSolanaWallet() {
     try {
       const result = await detected.connect();
       setAddress(providerAddress(detected) ?? read(() => result.publicKey.toBase58()) ?? null);
-      setError(null);
     } catch (cause) {
       setError(walletError(cause));
     }
@@ -149,7 +165,19 @@ export function useSolanaWallet() {
   const disconnect = useCallback(async () => {
     await read(async () => provider()?.disconnect?.());
     setAddress(null);
+    setError(null);
   }, []);
 
-  return { address, available, error, connect, disconnect };
+  return { address, error, connect, disconnect };
+}
+
+export function WalletProvider({ children }: { children: ReactNode }) {
+  const wallet = useWalletState();
+  return createElement(WalletContext.Provider, { value: wallet }, children);
+}
+
+export function useSolanaWallet(): WalletState {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error("useSolanaWallet must be used inside WalletProvider");
+  return value;
 }

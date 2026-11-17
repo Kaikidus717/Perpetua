@@ -157,7 +157,7 @@ async function send(
 
 function requirePublicKey(provider: SolanaProvider): string {
   const key = providerAddress(provider);
-  if (!key) throw new Error("connect a wallet first");
+  if (!key) throw new Error("connect your wallet in the header first");
   return key;
 }
 

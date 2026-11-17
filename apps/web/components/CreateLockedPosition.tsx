@@ -4,8 +4,8 @@ import { explorerCluster, explorerUrl, shortAddress } from "@/lib/format";
 import { humanError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
 import { createLockedPosition } from "@/lib/tx";
-import { BUTTON, BUTTON_PRIMARY, CARD, LINK } from "@/lib/ui";
-import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { BUTTON_PRIMARY, CARD, LINK } from "@/lib/ui";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useState } from "react";
 
 export function CreateLockedPosition({
@@ -56,9 +56,9 @@ export function CreateLockedPosition({
       </p>
 
       {!ready ? (
-        <button type="button" onClick={() => void wallet.connect()} className={BUTTON}>
-          Connect a wallet ({SUPPORTED_WALLETS})
-        </button>
+        <p className="text-[12px] leading-5 text-muted">
+          Connect your wallet in the header to create a test pool.
+        </p>
       ) : null}
 
       {ready && mismatched ? (

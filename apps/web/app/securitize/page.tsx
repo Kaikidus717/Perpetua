@@ -11,7 +11,7 @@ import { humanError, loadError } from "@/lib/messages";
 import { networkLabel } from "@/lib/network";
 import { type SecuritizeResult, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT_MONO, LINK, META, PAGE } from "@/lib/ui";
-import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { SHARE_SUPPLY } from "@perpetua/shared";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -85,7 +85,7 @@ export default function SecuritizePage() {
   async function runSecuritize() {
     const detected = solanaProvider();
     if (!detected || !position) {
-      setTxError("Connect a wallet first.");
+      setTxError("Connect your wallet in the header first.");
       return;
     }
     setBusy(true);
@@ -125,39 +125,19 @@ export default function SecuritizePage() {
         description="A vault holds the locked position so it cannot be pulled out. The shares go to your wallet, and their holders earn the fees the pool keeps collecting."
       />
 
-      <section className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
-        {wallet.address ? (
-          <>
-            <span className="font-mono text-[13px] text-ink">{shortAddress(wallet.address)}</span>
-            {cluster ? (
-              <span className="rounded-sm border border-line bg-panel px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted">
-                {cluster === "mainnet-beta" ? "mainnet" : cluster}
-              </span>
-            ) : null}
-            <button type="button" onClick={() => void wallet.disconnect()} className={BUTTON}>
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={() => void wallet.connect()} className={BUTTON_PRIMARY}>
-            Connect wallet
-          </button>
-        )}
+      <section className="space-y-1.5">
+        <label htmlFor="scan-wallet" className="block text-[12px] text-muted">
+          Scan a wallet
+        </label>
         <input
+          id="scan-wallet"
           value={manual}
           onChange={(event) => setManual(event.target.value)}
           aria-label="Wallet address to scan for positions"
-          placeholder="or paste a wallet address to scan"
-          className={`${INPUT_MONO} min-w-0 flex-1`}
+          placeholder="Paste a wallet address"
+          className={INPUT_MONO}
         />
       </section>
-
-      {wallet.error ? <p className="text-[13px] text-warn">{wallet.error}</p> : null}
-      {!wallet.available && !manual ? (
-        <p className="text-[13px] text-muted">
-          No wallet found. Paste an address above, or install {SUPPORTED_WALLETS}.
-        </p>
-      ) : null}
 
       {/* A mainnet wallet is a real, supported case — this app serves both networks — so instead of
           offering a button that cannot work, say which half works where and how to get to the other. */}
@@ -229,7 +209,7 @@ export default function SecuritizePage() {
       >
         {!target ? (
           <p className="text-[13px] text-muted">
-            Connect a wallet, or paste an address above, to see what it holds.
+            Connect your wallet in the header, or paste an address above, to see what it holds.
           </p>
         ) : null}
         {location.isError ? (

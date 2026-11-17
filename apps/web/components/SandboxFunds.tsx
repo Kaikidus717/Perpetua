@@ -5,7 +5,7 @@ import { shortAddress, txUrl } from "@/lib/format";
 import { useWalletNetwork } from "@/lib/network";
 import { RPC_URL } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, CHIP, LINK, META } from "@/lib/ui";
-import { SUPPORTED_WALLETS, useSolanaWallet } from "@/lib/wallet";
+import { useSolanaWallet } from "@/lib/wallet";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { useEffect, useState } from "react";
 
@@ -134,9 +134,9 @@ export function SandboxFunds() {
       </div>
 
       {!wallet.address ? (
-        <button type="button" onClick={() => void wallet.connect()} className={BUTTON_PRIMARY}>
-          Connect a wallet ({SUPPORTED_WALLETS})
-        </button>
+        <p className="text-[12px] leading-5 text-muted">
+          Connect your wallet in the header to fund the sandbox.
+        </p>
       ) : (
         <>
           <div className={`${CARD_MUTED} flex flex-wrap items-center justify-between gap-2 p-3`}>
@@ -161,9 +161,6 @@ export function SandboxFunds() {
               className={BUTTON_PRIMARY}
             >
               {busy ? "Sending test SOL…" : "Get test SOL"}
-            </button>
-            <button type="button" onClick={() => void wallet.disconnect()} className={BUTTON}>
-              Disconnect
             </button>
           </div>
 
@@ -205,7 +202,6 @@ export function SandboxFunds() {
         </>
       )}
 
-      {wallet.error ? <p className="text-[13px] text-warn">{wallet.error}</p> : null}
       {note ? <p className="text-[13px] leading-5 text-muted">{note}</p> : null}
     </section>
   );

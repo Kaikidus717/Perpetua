@@ -7,7 +7,7 @@ import { humanError } from "@/lib/messages";
 import { networkLabel, useWalletNetwork } from "@/lib/network";
 import { deployLaunch } from "@/lib/tx";
 import { BUTTON_PRIMARY, CARD, CARD_MUTED, INPUT, INPUT_MONO, LINK } from "@/lib/ui";
-import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { Keypair } from "@solana/web3.js";
 import { useState } from "react";
 
@@ -153,12 +153,10 @@ export function LaunchDeploy({
       </p>
 
       {!ready ? (
-        <button type="button" onClick={() => void wallet.connect()} className={BUTTON_PRIMARY}>
-          Connect a wallet ({SUPPORTED_WALLETS})
-        </button>
-      ) : (
-        <p className="font-mono text-[12px] text-muted">{shortAddress(wallet.address ?? "")}</p>
-      )}
+        <p className="text-[12px] leading-5 text-muted">
+          Connect your wallet in the header to launch this token.
+        </p>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1 text-[13px]">

@@ -9,7 +9,7 @@ import { humanError, loadError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
 import { openSale, seedLadder } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CARD_MUTED, INPUT, LINK } from "@/lib/ui";
-import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -131,12 +131,10 @@ export function SellShares({ shareMint, pool }: { shareMint: string; pool: strin
       </p>
 
       {!ready ? (
-        <button type="button" onClick={() => void wallet.connect()} className={BUTTON_PRIMARY}>
-          Connect a wallet ({SUPPORTED_WALLETS})
-        </button>
-      ) : (
-        <p className="font-mono text-[12px] text-muted">{shortAddress(wallet.address ?? "")}</p>
-      )}
+        <p className="text-[12px] leading-5 text-muted">
+          Connect your wallet in the header to sell shares.
+        </p>
+      ) : null}
 
       {ready && wrongNetwork ? (
         <p className="text-[13px] leading-5 text-warn">

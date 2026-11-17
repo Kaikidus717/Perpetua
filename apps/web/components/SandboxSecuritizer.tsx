@@ -8,7 +8,7 @@ import { humanError, loadError } from "@/lib/messages";
 import { useWalletNetwork } from "@/lib/network";
 import { RPC_URL, type SecuritizeResult, createLockedPosition, securitize } from "@/lib/tx";
 import { BUTTON, BUTTON_PRIMARY, CARD, CARD_MUTED, CHIP, CHIP_WARN, LINK, META } from "@/lib/ui";
-import { SUPPORTED_WALLETS, solanaProvider, useSolanaWallet } from "@/lib/wallet";
+import { solanaProvider, useSolanaWallet } from "@/lib/wallet";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -183,9 +183,9 @@ export function SandboxSecuritizer() {
       </div>
 
       {!ready ? (
-        <button type="button" onClick={() => void wallet.connect()} className={BUTTON_PRIMARY}>
-          Connect a wallet ({SUPPORTED_WALLETS})
-        </button>
+        <p className="text-[12px] leading-5 text-muted">
+          Connect your wallet in the header to build a test vault.
+        </p>
       ) : null}
 
       {ready && wrongNetwork ? (
